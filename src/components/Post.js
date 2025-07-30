@@ -36,6 +36,74 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
     checkIfLiked();
   }, [post.id, currentUser]);
 
+  // Realtime subscription cho post likes và comments
+  useEffect(() => {
+    const channel = supabase.channel(`post-${post.id}`)
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'post_likes' },
+        (payload) => {
+          console.log('Post likes realtime:', payload);
+          if (payload.new && payload.new.post_id === post.id) {
+            if (payload.eventType === 'INSERT') {
+              setLikes(prev => prev + 1);
+              if (payload.new.user_id === currentUser?.id) {
+                setLiked(true);
+              }
+            } else if (payload.eventType === 'DELETE') {
+              setLikes(prev => Math.max(0, prev - 1));
+              if (payload.old.user_id === currentUser?.id) {
+                setLiked(false);
+              }
+            }
+          }
+        }
+      )
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'comments' },
+        (payload) => {
+          console.log('Comments realtime:', payload);
+          if (payload.new && payload.new.post_id === post.id) {
+            if (payload.eventType === 'INSERT') {
+              setComments(prev => [...prev, payload.new]);
+            } else if (payload.eventType === 'DELETE') {
+              setComments(prev => prev.filter(c => c.id !== payload.old.id));
+            } else if (payload.eventType === 'UPDATE') {
+              setComments(prev => prev.map(c => c.id === payload.new.id ? payload.new : c));
+            }
+          }
+        }
+      )
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'comment_likes' },
+        (payload) => {
+          console.log('Comment likes realtime:', payload);
+          if (payload.new && payload.new.comment_id) {
+            const comment = comments.find(c => c.id === payload.new.comment_id);
+            if (comment) {
+              if (payload.eventType === 'INSERT') {
+                setComments(prev => prev.map(c => 
+                  c.id === payload.new.comment_id 
+                    ? { ...c, likes: (c.likes || 0) + 1 }
+                    : c
+                ));
+              } else if (payload.eventType === 'DELETE') {
+                setComments(prev => prev.map(c => 
+                  c.id === payload.old.comment_id 
+                    ? { ...c, likes: Math.max(0, (c.likes || 0) - 1) }
+                    : c
+                ));
+              }
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [post.id, currentUser?.id, comments]);
+
   useEffect(() => {
     async function fetchAuthorAvatar() {
       if (!authorAvatar && post.author_uid) {

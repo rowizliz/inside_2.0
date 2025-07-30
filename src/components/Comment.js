@@ -35,24 +35,17 @@ export default function Comment({ postId, comments, onCommentAdded }) {
     if (!newComment.trim() || !currentUser) return;
 
     try {
-      const newCommentObj = {
-        id: Date.now(),
-        content: newComment.trim(),
-        author_uid: currentUser.id,
-        author_display_name: currentUser.displayName,
-        author_email: currentUser.email,
-        author_avatar_url: currentUser.avatar_url, // Thêm dòng này
-        created_at: new Date().toISOString(),
-        likes: 0,
-        liked_by: []
-      };
-
-      const updatedComments = [...comments, newCommentObj];
-
-      const { error } = await supabase
-        .from('posts')
-        .update({ comments: updatedComments })
-        .eq('id', postId);
+      const { data, error } = await supabase
+        .from('comments')
+        .insert({
+          post_id: postId,
+          content: newComment.trim(),
+          author_uid: currentUser.id,
+          author_display_name: currentUser.displayName,
+          author_email: currentUser.email,
+          author_avatar_url: currentUser.avatar_url,
+          likes: 0
+        });
 
       if (error) {
         console.error('Error adding comment:', error);
@@ -61,9 +54,7 @@ export default function Comment({ postId, comments, onCommentAdded }) {
 
       setNewComment('');
       
-      if (onCommentAdded) {
-        onCommentAdded(updatedComments);
-      }
+      // Realtime sẽ tự động update comments
     } catch (error) {
       console.error('Error:', error);
     }
@@ -73,40 +64,44 @@ export default function Comment({ postId, comments, onCommentAdded }) {
     if (!currentUser) return;
 
     try {
-      const updatedComments = comments.map(comment => {
-        if (comment.id === commentId) {
-          const isLiked = comment.liked_by?.includes(currentUser.id);
-          if (isLiked) {
-            // Unlike
-            return {
-              ...comment,
-              likes: comment.likes - 1,
-              liked_by: comment.liked_by?.filter(id => id !== currentUser.id) || []
-            };
-          } else {
-            // Like
-            return {
-              ...comment,
-              likes: comment.likes + 1,
-              liked_by: [...(comment.liked_by || []), currentUser.id]
-            };
-          }
-        }
-        return comment;
-      });
+      // Kiểm tra xem user đã like comment này chưa
+      const { data: existingLike, error: checkError } = await supabase
+        .from('comment_likes')
+        .select('*')
+        .eq('comment_id', commentId)
+        .eq('user_id', currentUser.id)
+        .single();
 
-      const { error } = await supabase
-        .from('posts')
-        .update({ comments: updatedComments })
-        .eq('id', postId);
-
-      if (error) {
-        console.error('Error liking comment:', error);
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking like:', checkError);
         return;
       }
 
-      if (onCommentAdded) {
-        onCommentAdded(updatedComments);
+      if (existingLike) {
+        // Unlike
+        await supabase
+          .from('comment_likes')
+          .delete()
+          .eq('comment_id', commentId)
+          .eq('user_id', currentUser.id);
+
+        await supabase
+          .from('comments')
+          .update({ likes: comments.find(c => c.id === commentId)?.likes - 1 || 0 })
+          .eq('id', commentId);
+      } else {
+        // Like
+        await supabase
+          .from('comment_likes')
+          .insert({
+            comment_id: commentId,
+            user_id: currentUser.id
+          });
+
+        await supabase
+          .from('comments')
+          .update({ likes: (comments.find(c => c.id === commentId)?.likes || 0) + 1 })
+          .eq('id', commentId);
       }
     } catch (error) {
       console.error('Error:', error);
@@ -117,21 +112,18 @@ export default function Comment({ postId, comments, onCommentAdded }) {
     if (!currentUser) return;
 
     try {
-      const updatedComments = comments.filter(comment => comment.id !== commentId);
-
       const { error } = await supabase
-        .from('posts')
-        .update({ comments: updatedComments })
-        .eq('id', postId);
+        .from('comments')
+        .delete()
+        .eq('id', commentId)
+        .eq('author_uid', currentUser.id); // Chỉ author mới được delete
 
       if (error) {
         console.error('Error deleting comment:', error);
         return;
       }
 
-      if (onCommentAdded) {
-        onCommentAdded(updatedComments);
-      }
+      // Realtime sẽ tự động update comments
     } catch (error) {
       console.error('Error:', error);
     }

@@ -3,11 +3,14 @@ import { useAuth } from '../context/AuthContext';
 import supabase from '../supabase';
 import { HeartIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
+import { CameraIcon } from '@heroicons/react/24/outline';
 
 export default function Comment({ postId, comments, onCommentAdded }) {
   const [newComment, setNewComment] = useState('');
   const { currentUser } = useAuth();
   const [avatars, setAvatars] = useState({});
+  const [mediaFile, setMediaFile] = useState(null);
+  const [mediaPreview, setMediaPreview] = useState(null);
 
   useEffect(() => {
     async function fetchAvatars() {
@@ -30,11 +33,34 @@ export default function Comment({ postId, comments, onCommentAdded }) {
     // eslint-disable-next-line
   }, [comments]);
 
+  const handleMediaChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setMediaFile(file);
+      setMediaPreview(URL.createObjectURL(file));
+    }
+  };
+
   const handleSubmitComment = async (e) => {
     e.preventDefault();
-    if (!newComment.trim() || !currentUser) return;
-
+    if ((!newComment.trim() && !mediaFile) || !currentUser) return;
+    let media_url = null;
+    let media_type = null;
     try {
+      if (mediaFile) {
+        const ext = mediaFile.name.split('.').pop();
+        const filePath = `comment-media/${currentUser.id}_${Date.now()}.${ext}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('comment-media')
+          .upload(filePath, mediaFile, { upsert: true });
+        if (uploadError) {
+          alert('Lỗi upload file: ' + uploadError.message);
+          return;
+        }
+        const { data: urlData } = supabase.storage.from('comment-media').getPublicUrl(filePath);
+        media_url = urlData.publicUrl;
+        media_type = mediaFile.type;
+      }
       const { data, error } = await supabase
         .from('comments')
         .insert({
@@ -44,16 +70,17 @@ export default function Comment({ postId, comments, onCommentAdded }) {
           author_display_name: currentUser.displayName,
           author_email: currentUser.email,
           author_avatar_url: currentUser.avatar_url,
-          likes: 0
+          likes: 0,
+          media_url,
+          media_type
         });
-
       if (error) {
         console.error('Error adding comment:', error);
         return;
       }
-
       setNewComment('');
-      
+      setMediaFile(null);
+      setMediaPreview(null);
       // Realtime sẽ tự động update comments
     } catch (error) {
       console.error('Error:', error);
@@ -144,30 +171,31 @@ export default function Comment({ postId, comments, onCommentAdded }) {
     <div className="mt-3">
       {/* Comment Input - Luôn hiển thị */}
       <form onSubmit={handleSubmitComment} className="mb-3">
-        <div className="flex space-x-2">
-          <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-            {currentUser?.avatar_url ? (
-              <img 
-                src={currentUser.avatar_url} 
-                alt="Avatar" 
-                className="w-full h-full rounded-full object-cover" 
-              />
-            ) : (
-              currentUser?.displayName?.charAt(0) || 'U'
-            )}
-          </div>
-          <div className="flex-1">
-            <input
-              type="text"
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Viết bình luận..."
-              className="w-full bg-gray-800 border border-gray-700 rounded-full px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-            />
-          </div>
+        <div className="flex space-x-2 items-center">
+          <label className="cursor-pointer">
+            <CameraIcon className="w-5 h-5 text-gray-400 hover:text-blue-500" />
+            <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
+          </label>
+          {mediaPreview && (
+            <div className="relative">
+              {mediaFile && mediaFile.type.startsWith('image/') ? (
+                <img src={mediaPreview} alt="preview" className="w-10 h-10 object-cover rounded-lg mr-2" />
+              ) : (
+                <video src={mediaPreview} className="w-10 h-10 rounded-lg mr-2" controls />
+              )}
+              <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className="absolute top-0 right-0 bg-black bg-opacity-60 rounded-full p-1 text-white">&times;</button>
+            </div>
+          )}
+          <input
+            type="text"
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            placeholder="Viết bình luận..."
+            className="flex-1 bg-gray-800 border border-gray-700 rounded-full px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+          />
           <button
             type="submit"
-            disabled={!newComment.trim()}
+            disabled={!newComment.trim() && !mediaFile}
             className="bg-blue-500 text-white px-4 py-2 rounded-full text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Gửi
@@ -211,6 +239,13 @@ export default function Comment({ postId, comments, onCommentAdded }) {
                         </button>
                       )}
                     </div>
+                    {/* Hiển thị media nếu có */}
+                    {comment.media_url && comment.media_type && comment.media_type.startsWith('image/') && (
+                      <img src={comment.media_url} alt="media" className="rounded-xl mb-2 max-w-xs max-h-60 object-contain" />
+                    )}
+                    {comment.media_url && comment.media_type && comment.media_type.startsWith('video/') && (
+                      <video src={comment.media_url} controls className="rounded-xl mb-2 max-w-xs max-h-60" />
+                    )}
                     <div className="text-sm text-gray-300 text-left">
                       {comment.content}
                     </div>

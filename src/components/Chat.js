@@ -42,6 +42,8 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   // const [unreadCounts, setUnreadCounts] = useState({}); // Bỏ state cục bộ unreadCounts, dùng props
   // Thêm hàm kiểm tra đã xem cho từng message
   const [seenStatus, setSeenStatus] = useState({});
+  const [mediaFile, setMediaFile] = useState(null);
+  const [mediaPreview, setMediaPreview] = useState(null);
 
   // --- STATE PHÂN TRANG ---
   const [messageLimit, setMessageLimit] = useState(30);
@@ -566,7 +568,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     try {
       const { data, error, count } = await supabase
         .from('messages')
-        .select('id, channel_id, content, author_uid, author_display_name, author_avatar_url, created_at', { count: 'exact' })
+        .select('id, channel_id, content, author_uid, author_display_name, author_avatar_url, created_at, media_url, media_type', { count: 'exact' })
         .eq('channel_id', channelId)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
@@ -647,35 +649,59 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     }
   };
 
+  // Thêm hàm xử lý chọn file
+  const handleMediaChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setMediaFile(file);
+      setMediaPreview(URL.createObjectURL(file));
+    }
+  };
+
   // Send message
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim() || !currentChannel) return;
-
+    if ((!newMessage.trim() && !mediaFile) || !currentChannel) return;
+    let media_url = null;
+    let media_type = null;
     try {
+      if (mediaFile) {
+        // Upload file lên Supabase Storage
+        const ext = mediaFile.name.split('.').pop();
+        const filePath = `chat-media/${currentUser.id}_${Date.now()}.${ext}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('chat-media')
+          .upload(filePath, mediaFile, { upsert: true });
+        if (uploadError) {
+          alert('Lỗi upload file: ' + uploadError.message);
+          return;
+        }
+        // Lấy public URL
+        const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
+        media_url = urlData.publicUrl;
+        media_type = mediaFile.type;
+      }
       const { data, error } = await supabase
         .from('messages')
         .insert({
-        content: newMessage.trim(),
+          content: newMessage.trim(),
           channel_id: currentChannel.id,
           author_uid: currentUser.id,
           author_display_name: currentUser.display_name,
-          author_avatar_url: currentUser.avatar_url
+          author_avatar_url: currentUser.avatar_url,
+          media_url,
+          media_type
         })
         .select()
         .single();
-
       if (error) {
         console.error('Error sending message:', error);
         return;
       }
-
-      console.log('Message sent:', data);
-      
-      // Cập nhật tin nhắn mới nhất
       updateLatestMessage(currentChannel.id, data);
-      
       setNewMessage('');
+      setMediaFile(null);
+      setMediaPreview(null);
     } catch (error) {
       console.error('Error:', error);
     }
@@ -1546,6 +1572,13 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                         return (
                           <div key={msg.id + '-' + idx} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}> 
                     <div className="flex flex-col max-w-[70%]">
+                      {/* Hiển thị media nếu có */}
+                      {msg.media_url && msg.media_type && msg.media_type.startsWith('image/') && (
+                        <img src={msg.media_url} alt="media" className="rounded-xl mb-2 max-w-xs max-h-60 object-contain" />
+                      )}
+                      {msg.media_url && msg.media_type && msg.media_type.startsWith('video/') && (
+                        <video src={msg.media_url} controls className="rounded-xl mb-2 max-w-xs max-h-60" />
+                      )}
                       <div className={`px-4 py-2 rounded-2xl shadow ${isOwn ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white'} text-sm break-words message-bubble`}>{msg.content}</div>
                               <div className={`text-xs text-gray-500 mt-1 ${isOwn ? 'text-right' : 'text-left'}`}>{new Date(msg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
                             </div>
@@ -1558,7 +1591,21 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
           
                   {/* Input */}
           <div className="flex-shrink-0 p-4 bg-[#23232a] border-t border-gray-800">
-            <form onSubmit={handleSendMessage} className="flex space-x-3">
+            <form onSubmit={handleSendMessage} className="flex space-x-3 items-center">
+              <label className="cursor-pointer">
+                <CameraIcon className="w-6 h-6 text-gray-400 hover:text-blue-500" />
+                <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
+              </label>
+              {mediaPreview && (
+                <div className="relative">
+                  {mediaFile && mediaFile.type.startsWith('image/') ? (
+                    <img src={mediaPreview} alt="preview" className="w-12 h-12 object-cover rounded-lg mr-2" />
+                  ) : (
+                    <video src={mediaPreview} className="w-12 h-12 rounded-lg mr-2" controls />
+                  )}
+                  <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className="absolute top-0 right-0 bg-black bg-opacity-60 rounded-full p-1 text-white">&times;</button>
+                </div>
+              )}
               <input
                 type="text"
                 value={newMessage}
@@ -1568,7 +1615,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
               />
               <button
                 type="submit"
-                disabled={!newMessage.trim()}
+                disabled={!newMessage.trim() && !mediaFile}
                 className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow text-sm"
               >
                 <PaperAirplaneIcon className="w-5 h-5" />

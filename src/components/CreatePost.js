@@ -39,7 +39,6 @@ export default function CreatePost({ onPostCreated }) {
         
         try {
           // Upload file to Supabase Storage
-          // Tạo tên file ngắn gọn và an toàn
           const fileExtension = mediaFile.name.split('.').pop() || 'jpg';
           const timestamp = Date.now();
           const randomId = Math.random().toString(36).substring(2, 8);
@@ -62,26 +61,18 @@ export default function CreatePost({ onPostCreated }) {
           console.log('Upload successful:', data);
 
           // Get signed URL với thời hạn 10.000 năm
+          const expireSeconds = 10000 * 365 * 24 * 60 * 60;
           const { data: signedUrlData, error: signedError } = await supabase.storage
             .from('posts')
-            .createSignedUrl(fileName, 315360000000); // 10.000 năm (10.000 * 365 * 24 * 60 * 60 * 1000)
+            .createSignedUrl(fileName, expireSeconds);
           
           console.log('Signed URL result:', signedUrlData);
           
           if (signedError || !signedUrlData?.signedUrl) {
             console.error('Signed URL error:', signedError);
-            // Fallback to public URL
-            const { data: urlData } = supabase.storage
-              .from('posts')
-              .getPublicUrl(fileName);
-            
-            if (!urlData.publicUrl) {
-              throw new Error('Could not get URL for uploaded file');
-            }
-            mediaUrl = urlData.publicUrl;
-          } else {
-            mediaUrl = signedUrlData.signedUrl;
+            throw new Error('Could not get signed URL for uploaded file');
           }
+          mediaUrl = signedUrlData.signedUrl;
         
         mediaType = mediaFile.type;
           

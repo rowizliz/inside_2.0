@@ -57,8 +57,16 @@ export default function Comment({ postId, comments, onCommentAdded }) {
           alert('Lỗi upload file: ' + uploadError.message);
           return;
         }
-        const { data: urlData } = supabase.storage.from('comment-media').getPublicUrl(filePath);
-        media_url = urlData.publicUrl;
+        // Lấy signed URL 10.000 năm
+        const expireSeconds = 10000 * 365 * 24 * 60 * 60;
+        const { data: signedUrlData, error: signedError } = await supabase.storage
+          .from('comment-media')
+          .createSignedUrl(filePath, expireSeconds);
+        if (signedError || !signedUrlData?.signedUrl) {
+          alert('Lỗi tạo signed URL: ' + (signedError?.message || 'Không lấy được signed URL'));
+          return;
+        }
+        media_url = signedUrlData.signedUrl;
         media_type = mediaFile.type;
       }
       const { data, error } = await supabase

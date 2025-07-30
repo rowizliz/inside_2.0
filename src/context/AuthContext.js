@@ -147,9 +147,9 @@ export function AuthProvider({ children }) {
   async function fetchUserProfileWithTimeout(user, ms = 15000) {
     try {
       return await Promise.race([
-        fetchUserProfile(user),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('fetchUserProfile timeout')), ms))
-      ]);
+      fetchUserProfile(user),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('fetchUserProfile timeout')), ms))
+    ]);
     } catch (error) {
       console.warn('fetchUserProfile timeout, using basic user data:', error);
       // Thay vì set currentUser thành null, sử dụng basic user data
@@ -236,7 +236,7 @@ export function AuthProvider({ children }) {
           console.log('Fallback user:', user);
           if (userError) {
             console.error('User error:', userError);
-          }
+      }
           
           if (user) {
             // Tạo session giả từ user
@@ -275,8 +275,8 @@ export function AuthProvider({ children }) {
           };
           setCurrentUser(basicUser);
         } else {
-          setCurrentUser(null);
-        }
+        setCurrentUser(null);
+      }
       }
     };
     

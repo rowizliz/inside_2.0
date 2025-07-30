@@ -52,20 +52,31 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   useEffect(() => {
     const initAudio = () => {
       try {
+        console.log('🔄 Initializing AudioContext...');
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         const context = new AudioContext();
+        console.log('✅ AudioContext created:', context);
+        console.log('AudioContext state:', context.state);
         setAudioContext(context);
+        console.log('✅ AudioContext initialized successfully');
       } catch (error) {
-        console.error('Error initializing audio context:', error);
+        console.error('❌ Error initializing audio context:', error);
       }
     };
 
     const handleUserInteraction = () => {
+      console.log('👆 User interaction detected');
       if (!audioContext) {
+        console.log('🔄 Initializing audio context on user interaction');
         initAudio();
-        setHasUserInteracted(true);
       }
+      setHasUserInteracted(true);
+      console.log('✅ hasUserInteracted set to true');
     };
+
+    // Khởi tạo audio ngay khi component mount
+    console.log('🎵 Setting up audio...');
+    initAudio();
 
     document.addEventListener('click', handleUserInteraction);
     document.addEventListener('keydown', handleUserInteraction);
@@ -76,7 +87,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
       document.removeEventListener('keydown', handleUserInteraction);
       document.removeEventListener('touchstart', handleUserInteraction);
     };
-  }, [audioContext]);
+  }, []); // Bỏ dependency audioContext để tránh infinite loop
 
   // Fetch channels
   const fetchChannels = async () => {
@@ -671,56 +682,62 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   };
 
   // Hàm phát âm thanh êm dịu khi có tin nhắn mới
-  const playNotificationSound = () => {
-    console.log('playNotificationSound called:', { audioContext: !!audioContext, hasUserInteracted, soundEnabled });
-    if (!audioContext || !hasUserInteracted || !soundEnabled) {
-      console.log('Sound not played:', { audioContext: !!audioContext, hasUserInteracted, soundEnabled });
+  const playNotificationSound = async () => {
+    console.log('=== playNotificationSound START ===');
+    console.log('audioContext:', audioContext);
+    console.log('audioContext state:', audioContext?.state);
+    console.log('hasUserInteracted:', hasUserInteracted);
+    console.log('soundEnabled:', soundEnabled);
+    
+    // Kiểm tra điều kiện cơ bản
+    if (!audioContext) {
+      console.log('❌ No audioContext available');
       return;
     }
+    
+    if (!hasUserInteracted) {
+      console.log('❌ User has not interacted yet');
+      return;
+    }
+    
+    if (!soundEnabled) {
+      console.log('❌ Sound is disabled');
+      return;
+    }
+    
     try {
+      console.log('✅ All conditions met, creating sound...');
+      
+      // Đảm bảo AudioContext đang chạy
+      if (audioContext.state === 'suspended') {
+        console.log('🔄 Resuming suspended AudioContext...');
+        await audioContext.resume();
+      }
+      
       const ctx = audioContext;
       const now = ctx.currentTime;
-      // Tạo oscillator với sóng sine, tần số thấp, fade out nhanh
+      
+      // Tạo âm thanh đơn giản hơn
       const osc = ctx.createOscillator();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(440, now); // A4
-      osc.frequency.linearRampToValueAtTime(660, now + 0.12); // lên nhẹ
-      osc.frequency.linearRampToValueAtTime(520, now + 0.25); // xuống nhẹ
+      osc.frequency.setValueAtTime(800, now); // Tần số cao hơn để dễ nghe
+      
       const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.08, now);
-      gain.gain.linearRampToValueAtTime(0.0, now + 0.4);
+      gain.gain.setValueAtTime(0.3, now); // Âm lượng cao hơn
+      gain.gain.linearRampToValueAtTime(0.0, now + 0.3);
+      
       osc.connect(gain);
       gain.connect(ctx.destination);
+      
       osc.start(now);
-      osc.stop(now + 0.4);
+      osc.stop(now + 0.3);
+      
+      console.log('✅ Sound played successfully!');
     } catch (error) {
-      console.error('Error playing sound:', error);
+      console.error('❌ Error playing sound:', error);
     }
-  };
-
-  // Test real-time function
-  const testRealtime = async () => {
-    try {
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          channel_id: currentChannel.id,
-          content: 'Test real-time message - ' + new Date().toLocaleTimeString(),
-          author_uid: currentUser.id,
-          author_display_name: currentUser.displayName,
-          author_email: currentUser.email,
-          author_avatar_url: currentUser.avatar_url || null
-        });
-
-      if (error) {
-        console.error('Error sending test message:', error);
-        alert('Lỗi gửi tin nhắn test: ' + error.message);
-      } else {
-        console.log('Test message sent successfully');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-    }
+    
+    console.log('=== playNotificationSound END ===');
   };
 
   // Update user info cho tất cả channels
@@ -783,6 +800,8 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
             // Cập nhật tin nhắn mới nhất
             updateLatestMessage(currentChannel.id, payload.new);
             if (payload.new.author_uid !== currentUser?.id) {
+              console.log('New message from other user, playing notification sound');
+              // Luôn phát âm thanh khi có tin nhắn mới từ người khác
               playNotificationSound();
             }
           } else if (payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
@@ -1441,11 +1460,11 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                       ) : (
                         (info?.display_name || channel.name || 'U').charAt(0)
                       )}
-                    </div>
+                  </div>
                     <div className="flex-1 min-w-0 flex flex-col items-start justify-center">
                       <div className="text-white font-medium truncate text-left w-full">
                         {info?.display_name || channel.name || 'Unknown'}
-                      </div>
+                  </div>
                       <div className="text-xs text-gray-400 truncate text-left w-full flex items-center">
                         {latestMsg ? latestMsg.content : 'Chưa có tin nhắn'}
                         {unreadCounts[channel.id] > 0 && (
@@ -1453,8 +1472,8 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                             {unreadCounts[channel.id]}
                           </span>
                         )}
-                      </div>
-                    </div>
+                </div>
+              </div>
                   </div>
                 );
               })}
@@ -1473,32 +1492,32 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
               className="mr-3 p-2 rounded-full hover:bg-gray-800 transition-colors"
             >
               <ArrowLeftIcon className="w-5 h-5 text-white" />
-            </button>
+                      </button>
             <div className="flex items-center space-x-3 flex-1">
               <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white overflow-hidden">
-                {currentChannel.type === 'direct' ? (
-                  currentUserInfo?.avatar_url ? (
-                    <img src={currentUserInfo.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
-                  ) : (
-                    (currentUserInfo?.display_name || currentUserInfo?.email || 'U').charAt(0)
-                  )
-                ) : (
+                        {currentChannel.type === 'direct' ? (
+                          currentUserInfo?.avatar_url ? (
+                            <img src={currentUserInfo.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+                          ) : (
+                            (currentUserInfo?.display_name || currentUserInfo?.email || 'U').charAt(0)
+                          )
+                        ) : (
                   // Xóa icon chat cho group chat vì chưa có function
                   null
-                )}
-              </div>
+                        )}
+                      </div>
               <div className="flex-1">
                 <h3 className="text-white font-bold text-lg">
-                  {currentChannel.type === 'direct' 
-                    ? (currentUserInfo?.display_name || currentUserInfo?.email || 'Unknown')
-                    : currentChannel.name
-                  }
-                </h3>
+                          {currentChannel.type === 'direct' 
+                            ? (currentUserInfo?.display_name || currentUserInfo?.email || 'Unknown')
+                            : currentChannel.name
+                          }
+                        </h3>
                 <p className="text-gray-400 text-sm">
-                  {currentChannel.type === 'direct' ? '💬 Chat riêng' : '👥 Group chat'}
-                </p>
-              </div>
-            </div>
+                          {currentChannel.type === 'direct' ? '💬 Chat riêng' : '👥 Group chat'}
+                        </p>
+                      </div>
+                    </div>
             {/* Nút toggle chat list cho mobile */}
             <button
               onClick={() => setShowMobileChatList(!showMobileChatList)}
@@ -1506,30 +1525,38 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
             >
               <ChatBubbleLeftRightIcon className="w-5 h-5 text-white" />
             </button>
-          </div>
+            {/* Nút toggle âm thanh */}
+            <button
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className={`p-2 rounded-full transition-colors ${soundEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+              title={soundEnabled ? 'Tắt âm thanh' : 'Bật âm thanh'}
+            >
+              {soundEnabled ? '🔊' : '🔇'}
+            </button>
+                  </div>
           
-          {/* Messages */}
+                  {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 custom-scrollbar bg-[#23232a]" onScroll={handleScroll} ref={messagesContainerRef}>
             <div className="space-y-4">
-              {isLoadingMore && (
-                <div className="text-center text-xs text-gray-400 mb-2">Đang tải thêm tin nhắn...</div>
-              )}
-              {messages.map((msg, idx) => {
-                const isOwn = msg.author_uid === currentUser?.id;
-                return (
-                  <div key={msg.id + '-' + idx} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}> 
+                      {isLoadingMore && (
+                        <div className="text-center text-xs text-gray-400 mb-2">Đang tải thêm tin nhắn...</div>
+                      )}
+                      {messages.map((msg, idx) => {
+                        const isOwn = msg.author_uid === currentUser?.id;
+                        return (
+                          <div key={msg.id + '-' + idx} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}> 
                     <div className="flex flex-col max-w-[70%]">
                       <div className={`px-4 py-2 rounded-2xl shadow ${isOwn ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white'} text-sm break-words message-bubble`}>{msg.content}</div>
-                      <div className={`text-xs text-gray-500 mt-1 ${isOwn ? 'text-right' : 'text-left'}`}>{new Date(msg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
-                    </div>
-                  </div>
-                );
-              })}
+                              <div className={`text-xs text-gray-500 mt-1 ${isOwn ? 'text-right' : 'text-left'}`}>{new Date(msg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
               <div ref={messagesEndRef} />
-            </div>
           </div>
+                  </div>
           
-          {/* Input */}
+                  {/* Input */}
           <div className="flex-shrink-0 p-4 bg-[#23232a] border-t border-gray-800">
             <form onSubmit={handleSendMessage} className="flex space-x-3">
               <input
@@ -1547,7 +1574,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                 <PaperAirplaneIcon className="w-5 h-5" />
               </button>
             </form>
-          </div>
+                  </div>
         </div>
       )}
 
@@ -1612,8 +1639,8 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                         <img src={info.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
                       ) : (
                         (info?.display_name || channel.name || 'U').charAt(0)
-                      )}
-                    </div>
+              )}
+            </div>
                     <div className="flex-1 min-w-0 flex flex-col items-start justify-center">
                       <div className="text-white font-medium truncate text-left w-full">
                         {info?.display_name || channel.name || 'Unknown'}
@@ -1624,9 +1651,9 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                           <span className="ml-2 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold animate-pulse">
                             {unreadCounts[channel.id]}
                           </span>
-                        )}
-                      </div>
-                    </div>
+          )}
+        </div>
+      </div>
                   </div>
                 );
               })}

@@ -16,6 +16,18 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
   const { currentUser } = useAuth();
   const [authorAvatar, setAuthorAvatar] = useState(post.author_avatar_url || null);
 
+  // Định nghĩa fetchComments ở ngoài để dùng lại
+  async function fetchComments() {
+    const { data, error } = await supabase
+      .from('comments')
+      .select('*')
+      .eq('post_id', post.id)
+      .order('created_at', { ascending: true });
+    if (!error && data) {
+      setComments(data);
+    }
+  }
+
   // Check if current user has liked this post
   useEffect(() => {
     const checkIfLiked = async () => {
@@ -62,14 +74,12 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
         { event: '*', schema: 'public', table: 'comments' },
         (payload) => {
           console.log('Comments realtime:', payload);
-          if (payload.new && payload.new.post_id === post.id) {
-            if (payload.eventType === 'INSERT') {
-              setComments(prev => [...prev, payload.new]);
-            } else if (payload.eventType === 'DELETE') {
-              setComments(prev => prev.filter(c => c.id !== payload.old.id));
-            } else if (payload.eventType === 'UPDATE') {
-              setComments(prev => prev.map(c => c.id === payload.new.id ? payload.new : c));
-            }
+          if (
+            (payload.new && payload.new.post_id === post.id) ||
+            (payload.eventType === 'DELETE' && payload.old && payload.old.post_id === post.id)
+          ) {
+            // Luôn fetch lại toàn bộ comment khi có thay đổi
+            fetchComments();
           }
         }
       )
@@ -81,7 +91,7 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
             const comment = comments.find(c => c.id === payload.new.comment_id);
             if (comment) {
               if (payload.eventType === 'INSERT') {
-                setComments(prev => prev.map(c => 
+                setComments(prev => prev.map(c =>     
                   c.id === payload.new.comment_id 
                     ? { ...c, likes: (c.likes || 0) + 1 }
                     : c
@@ -102,7 +112,12 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [post.id, currentUser?.id, comments]);
+  }, [post.id, currentUser?.id]);
+
+  // Fetch comments khi load lại trang
+  useEffect(() => {
+    fetchComments();
+  }, [post.id]);
 
   useEffect(() => {
     async function fetchAuthorAvatar() {
@@ -488,7 +503,7 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
           <div className="mt-3 pt-3 border-t border-gray-800">
             <Comment 
               postId={post.id} 
-              comments={displayComments} 
+              comments={comments} 
               onCommentAdded={handleCommentAdded}
             />
             

@@ -29,6 +29,37 @@ export default function Home() {
   const [unreadCounts, setUnreadCounts] = useState({});
   const { currentUser, logout } = useAuth();
 
+  // Hàm phát âm thanh đơn giản cho Home.js
+  const playNotificationSound = () => {
+    console.log('🎵 Home.js: playNotificationSound called');
+    try {
+      console.log('🎵 Home.js: Creating AudioContext...');
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioContext();
+      console.log('🎵 Home.js: AudioContext created, state:', ctx.state);
+      
+      const now = ctx.currentTime;
+      
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, now);
+      
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.linearRampToValueAtTime(0.0, now + 0.3);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.start(now);
+      osc.stop(now + 0.3);
+      
+      console.log('✅ Home.js: Sound played successfully!');
+    } catch (error) {
+      console.error('❌ Home.js: Error playing sound:', error);
+    }
+  };
+
   // Function để update activeView và lưu vào localStorage
   const updateActiveView = (newView) => {
     setActiveView(newView);
@@ -72,16 +103,47 @@ export default function Home() {
   // Gọi khi đăng nhập thành công hoặc chuyển tab
   useEffect(() => { fetchUnreadCounts(); }, [currentUser]);
 
-  // Gọi khi có message mới (realtime)
+  // Test subscription để xác nhận realtime hoạt động
   useEffect(() => {
     if (!currentUser) return;
+    console.log('🧪 Home.js: Setting up test subscription');
+    
+    const testChannel = supabase.channel('test-messages')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
+        console.log('🧪 Home.js: Test subscription received:', payload.eventType, payload);
+      })
+      .subscribe((status) => {
+        console.log('🧪 Home.js: Test subscription status:', status);
+      });
+      
+    return () => {
+      console.log('🧪 Home.js: Cleaning up test subscription');
+      supabase.removeChannel(testChannel);
+    };
+  }, [currentUser?.id]);
+
+  // Gọi khi có message mới (realtime)
+  useEffect(() => {
+    if (!currentUser) {
+      console.log('🔔 Home.js: No currentUser, skipping subscription setup');
+      return;
+    }
+    console.log('🔔 Home.js: Setting up realtime subscription for messages');
+    
     const channel = supabase.channel('unread-messages-home')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
+        console.log('🔔 Home.js: Received message insert:', payload);
+        playNotificationSound();
         await fetchUnreadCounts();
       })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [currentUser]);
+      .subscribe((status) => {
+        console.log('🔔 Home.js: Subscription status:', status);
+      });
+      
+    return () => { 
+      supabase.removeChannel(channel); 
+    };
+  }, [currentUser?.id]); // Chỉ dependency currentUser.id thay vì toàn bộ currentUser
 
   useEffect(() => {
     const fetchPosts = async () => {
@@ -230,19 +292,19 @@ export default function Home() {
             <div className="flex items-center space-x-4">
               {/* Nút chat - ẩn khi đang ở trang chat */}
               {activeView !== 'chat' && (
-                <button
+              <button
                   onClick={() => { updateActiveView('chat'); updateShowProfile(false); }}
                   className="p-2 rounded-full hover:bg-gray-800 transition-colors relative"
-                  title="Chat"
-                >
-                  <ChatBubbleLeftRightIcon className="w-6 h-6 text-white" />
-                  {/* Badge số tin nhắn chưa đọc, nếu có */}
-                  {Object.values(unreadCounts).reduce((a, b) => a + b, 0) > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 font-bold animate-pulse">
-                      {Object.values(unreadCounts).reduce((a, b) => a + b, 0)}
-                    </span>
-                  )}
-                </button>
+                title="Chat"
+              >
+                <ChatBubbleLeftRightIcon className="w-6 h-6 text-white" />
+                {/* Badge số tin nhắn chưa đọc, nếu có */}
+                {Object.values(unreadCounts).reduce((a, b) => a + b, 0) > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 font-bold animate-pulse">
+                    {Object.values(unreadCounts).reduce((a, b) => a + b, 0)}
+                  </span>
+                )}
+              </button>
               )}
               {/* Nút profile/avatar */}
               <div className="relative">

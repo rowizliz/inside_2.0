@@ -1,70 +1,132 @@
-# Getting Started with Create React App
+# Inside - Mạng xã hội dành cho người hướng nội
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+## 🌟 Giới thiệu
 
-## Available Scripts
+Inside là một mạng xã hội được thiết kế đặc biệt cho những người hướng nội, nơi họ có thể kết nối, chia sẻ và tương tác một cách thoải mái.
 
-In the project directory, you can run:
+## ✨ Tính năng chính
 
-### `npm start`
+### 📱 Giao diện người dùng
+- **Dark theme** hiện đại và dễ chịu cho mắt
+- **Responsive design** tối ưu cho mobile và desktop
+- **Instagram-like UX** với navigation mượt mà
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### 💬 Chat System
+- **Real-time messaging** với Supabase Realtime
+- **Direct chat** và **Group chat**
+- **Unread message counter** với badge thông báo
+- **Message persistence** và session management
+- **Auto-scroll** và **message history**
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### 📝 Social Features
+- **Create posts** với text và hình ảnh
+- **User profiles** với avatar và bio
+- **Real-time feed** với live updates
+- **Post interactions** (like, comment)
 
-### `npm test`
+### 🔐 Authentication
+- **Secure login/signup** với Supabase Auth
+- **Session persistence** - không bị logout khi refresh
+- **Protected routes** cho bảo mật
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## 🛠️ Công nghệ sử dụng
 
-### `npm run build`
+### Frontend
+- **React 18** với Hooks và Context API
+- **Tailwind CSS** cho styling
+- **Heroicons** cho icons
+- **React Router** cho navigation
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Backend & Database
+- **Supabase** cho:
+  - Authentication
+  - Real-time database
+  - File storage
+  - Row Level Security (RLS)
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Development
+- **Create React App**
+- **PostCSS** và **Autoprefixer**
+- **Git** cho version control
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## 🚀 Cài đặt và chạy
 
-### `npm run eject`
+### Prerequisites
+- Node.js (v14+)
+- npm hoặc yarn
+- Supabase account
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Installation
+```bash
+# Clone repository
+git clone https://github.com/rowizliz/inside.git
+cd inside
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+# Install dependencies
+npm install
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+# Tạo file .env với Supabase credentials
+echo "REACT_APP_SUPABASE_URL=your_supabase_url" > .env
+echo "REACT_APP_SUPABASE_ANON_KEY=your_supabase_anon_key" >> .env
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+# Chạy development server
+npm start
+```
 
-## Learn More
+### Environment Variables
+Tạo file `.env` trong root directory:
+```env
+REACT_APP_SUPABASE_URL=https://your-project.supabase.co
+REACT_APP_SUPABASE_ANON_KEY=your_anon_key
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## 📊 Database Schema
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### Tables
+- `profiles` - User profiles
+- `posts` - Social media posts
+- `chat_channels` - Chat channels
+- `chat_channel_members` - Channel memberships
+- `messages` - Chat messages
+- `message_reads` - Message read status
 
-### Code Splitting
+## 🎯 Tính năng nổi bật
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+### Session Management
+- ✅ Không bị logout khi refresh
+- ✅ Session persistence với localStorage
+- ✅ Auto-refresh token
 
-### Analyzing the Bundle Size
+### Chat Experience
+- ✅ Instagram-like flow (Feed → Chat List → Chat Detail)
+- ✅ Real-time messaging
+- ✅ Unread message counter
+- ✅ Message history với pagination
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+### UI/UX
+- ✅ Dark theme hiện đại
+- ✅ Responsive design
+- ✅ Smooth animations
+- ✅ Loading states
 
-### Making a Progressive Web App
+## 🔗 Links
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+- **Live Demo**: [Deploy trên Vercel]
+- **GitHub**: https://github.com/rowizliz/inside
+- **Supabase**: https://supabase.com
 
-### Advanced Configuration
+## 📝 License
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+MIT License - xem file LICENSE để biết thêm chi tiết.
 
-### Deployment
+## 🤝 Contributing
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+1. Fork project
+2. Tạo feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Mở Pull Request
 
-### `npm run build` fails to minify
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+**Made with ❤️ for introverts**

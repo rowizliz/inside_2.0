@@ -297,6 +297,24 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const channel = supabase.channel('profile-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles' },
+        (payload) => {
+          if (payload.new && payload.new.id === currentUser.id) {
+            // Tự động fetch lại profile khi có thay đổi
+            fetchUserProfile(currentUser);
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.id]);
+
   const value = {
     currentUser,
     signup,

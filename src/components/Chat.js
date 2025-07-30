@@ -37,6 +37,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   const [channelUserInfos, setChannelUserInfos] = useState({});
   const [showMobileChat, setShowMobileChat] = useState(false);
   const [showChatDetail, setShowChatDetail] = useState(false); // State để quản lý hiển thị chat detail
+  const [showMobileChatList, setShowMobileChatList] = useState(false); // State để toggle chat list ở mobile
   // State lưu số tin nhắn chưa đọc cho từng kênh
   // const [unreadCounts, setUnreadCounts] = useState({}); // Bỏ state cục bộ unreadCounts, dùng props
   // Thêm hàm kiểm tra đã xem cho từng message
@@ -671,7 +672,11 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
 
   // Hàm phát âm thanh êm dịu khi có tin nhắn mới
   const playNotificationSound = () => {
-    if (!audioContext || !hasUserInteracted || !soundEnabled) return;
+    console.log('playNotificationSound called:', { audioContext: !!audioContext, hasUserInteracted, soundEnabled });
+    if (!audioContext || !hasUserInteracted || !soundEnabled) {
+      console.log('Sound not played:', { audioContext: !!audioContext, hasUserInteracted, soundEnabled });
+      return;
+    }
     try {
       const ctx = audioContext;
       const now = ctx.currentTime;
@@ -1469,7 +1474,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
             >
               <ArrowLeftIcon className="w-5 h-5 text-white" />
             </button>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-3 flex-1">
               <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white overflow-hidden">
                 {currentChannel.type === 'direct' ? (
                   currentUserInfo?.avatar_url ? (
@@ -1482,7 +1487,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                   null
                 )}
               </div>
-              <div>
+              <div className="flex-1">
                 <h3 className="text-white font-bold text-lg">
                   {currentChannel.type === 'direct' 
                     ? (currentUserInfo?.display_name || currentUserInfo?.email || 'Unknown')
@@ -1494,6 +1499,13 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                 </p>
               </div>
             </div>
+            {/* Nút toggle chat list cho mobile */}
+            <button
+              onClick={() => setShowMobileChatList(!showMobileChatList)}
+              className="p-2 rounded-full hover:bg-gray-800 transition-colors md:hidden"
+            >
+              <ChatBubbleLeftRightIcon className="w-5 h-5 text-white" />
+            </button>
           </div>
           
           {/* Messages */}
@@ -1535,6 +1547,90 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                 <PaperAirplaneIcon className="w-5 h-5" />
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Chat List Overlay */}
+      {showMobileChatList && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 md:hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-80 bg-[#18181b] flex flex-col">
+            {/* Header */}
+            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+              <h3 className="text-white font-bold">Chat List</h3>
+              <button
+                onClick={() => setShowMobileChatList(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+            
+            {/* Navigation Buttons */}
+            <div className="p-4 border-b border-gray-800">
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setShowUserList(!showUserList)}
+                  className={`flex-1 bg-gray-700 text-white px-4 py-2 rounded-full hover:bg-gray-600 transition-colors text-sm font-medium shadow ${showUserList ? 'ring-2 ring-gray-400' : ''}`}
+                >
+                  👥 Users
+                </button>
+                <button
+                  onClick={() => setShowCreateChannel(!showCreateChannel)}
+                  className={`flex-1 bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-500 transition-colors text-sm font-medium shadow ${showCreateChannel ? 'ring-2 ring-blue-400' : ''}`}
+                >
+                  + Nhóm
+                </button>
+              </div>
+            </div>
+            
+            {/* Chat List */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-2 space-y-1">
+              {sortedChannels.map((channel, idx) => {
+                const isActive = currentChannel && channel.id === currentChannel.id;
+                let info = null;
+                if (channel.type === 'direct') {
+                  info = channelUserInfos[channel.id];
+                } else if (channel.type === 'group') {
+                  const members = channel.chat_channel_members || [];
+                  if (members.length > 0) {
+                    info = {
+                      avatar_url: members[0].avatar_url,
+                      display_name: members[0].display_name
+                    };
+                  }
+                }
+                const latestMsg = latestMessages[channel.id];
+                return (
+                  <div
+                    key={channel.id}
+                    onClick={() => { handleChannelClick(channel); setShowMobileChatList(false); }}
+                    className={`flex items-center space-x-3 px-3 py-2 rounded-xl cursor-pointer transition-all ${isActive ? 'bg-blue-900/60' : 'hover:bg-gray-800/80'} group`}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white overflow-hidden">
+                      {info?.avatar_url ? (
+                        <img src={info.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        (info?.display_name || channel.name || 'U').charAt(0)
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col items-start justify-center">
+                      <div className="text-white font-medium truncate text-left w-full">
+                        {info?.display_name || channel.name || 'Unknown'}
+                      </div>
+                      <div className="text-xs text-gray-400 truncate text-left w-full flex items-center">
+                        {latestMsg ? latestMsg.content : 'Chưa có tin nhắn'}
+                        {unreadCounts[channel.id] > 0 && (
+                          <span className="ml-2 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold animate-pulse">
+                            {unreadCounts[channel.id]}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

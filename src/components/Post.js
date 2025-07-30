@@ -4,6 +4,7 @@ import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
 import { useAuth } from '../context/AuthContext';
 import supabase from '../supabase';
 import Comment from './Comment';
+import VoicePlayer from './VoicePlayer';
 
 export default function Post({ post, onPostDeleted, onUserClick }) {
   const [liked, setLiked] = useState(false);
@@ -442,6 +443,8 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
                     console.log('Video loaded successfully:', post.media_url);
                   }}
                 />
+              ) : post.media_type === 'audio/wav' ? (
+                <VoicePlayer audioUrl={post.media_url} isOwn={false} />
               ) : (
                 <div className="text-gray-400 text-sm">
                   Media type not supported: {post.media_type}

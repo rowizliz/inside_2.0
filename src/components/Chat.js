@@ -12,6 +12,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import supabase from '../supabase';
+import VoiceRecorder from './VoiceRecorder';
+import VoicePlayer from './VoicePlayer';
 
 export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts }) {
   const [channels, setChannels] = useState([]);
@@ -45,6 +47,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
   const [modalMedia, setModalMedia] = useState(null);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
 
   // --- STATE PHÂN TRANG ---
   const [messageLimit, setMessageLimit] = useState(30);
@@ -712,6 +715,74 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
       setMediaPreview(null);
     } catch (error) {
       console.error('Error:', error);
+    }
+  };
+
+  // Gửi tin nhắn thoại
+  const handleVoiceRecorded = async (audioBlob) => {
+    if (!currentUser || !currentChannel) return;
+
+    try {
+      // Tạo file từ blob
+      const fileName = `voice-messages/${currentUser.id}_${Date.now()}.wav`;
+      const file = new File([audioBlob], fileName, { type: 'audio/wav' });
+
+      // Upload lên Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('voice-messages')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        alert('Lỗi upload tin nhắn thoại: ' + uploadError.message);
+        return;
+      }
+
+      // Tạo signed URL
+      const expireSeconds = 10000 * 365 * 24 * 60 * 60; // 10.000 năm
+      const { data: signedUrlData, error: signedError } = await supabase.storage
+        .from('voice-messages')
+        .createSignedUrl(fileName, expireSeconds);
+
+      if (signedError || !signedUrlData?.signedUrl) {
+        console.error('Signed URL error:', signedError);
+        throw new Error('Could not get signed URL for voice message');
+      }
+
+      // Lưu tin nhắn vào database
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          channel_id: currentChannel.id,
+          content: '🎤 Tin nhắn thoại',
+          author_uid: currentUser.id,
+          author_display_name: currentUser.display_name,
+          author_avatar_url: currentUser.avatar_url,
+          media_url: signedUrlData.signedUrl,
+          media_type: 'audio/wav'
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error sending voice message:', error);
+        alert('Lỗi gửi tin nhắn thoại: ' + error.message);
+        return;
+      }
+
+      setShowVoiceRecorder(false);
+
+      // Cập nhật tin nhắn mới nhất
+      updateLatestMessage(currentChannel.id, data);
+
+      // Phát âm thanh thông báo
+      if (soundEnabled) {
+        playNotificationSound();
+      }
+
+    } catch (error) {
+      console.error('Error in handleVoiceRecorded:', error);
+      alert('Lỗi gửi tin nhắn thoại: ' + error.message);
     }
   };
 
@@ -1597,7 +1668,12 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                           onClick={() => setModalMedia({ url: msg.media_url, type: msg.media_type })}
                         />
                       )}
-                      <div className={`px-4 py-2 rounded-2xl shadow ${isOwn ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white'} text-sm break-words message-bubble`}>{msg.content}</div>
+                      {/* Hiển thị tin nhắn thoại */}
+                      {msg.media_url && msg.media_type && msg.media_type === 'audio/wav' ? (
+                        <VoicePlayer audioUrl={msg.media_url} isOwn={isOwn} />
+                      ) : (
+                        <div className={`px-4 py-2 rounded-2xl shadow ${isOwn ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white'} text-sm break-words message-bubble`}>{msg.content}</div>
+                      )}
                               <div className={`text-xs text-gray-500 mt-1 ${isOwn ? 'text-right' : 'text-left'}`}>{new Date(msg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
                             </div>
                           </div>
@@ -1608,38 +1684,52 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                   </div>
           
                   {/* Input */}
-          <div className="flex-shrink-0 p-4 bg-[#23232a] border-t border-gray-800">
-            <form onSubmit={handleSendMessage} className="flex space-x-3 items-center">
-              <label className="cursor-pointer">
-                <CameraIcon className="w-6 h-6 text-gray-400 hover:text-blue-500" />
-                <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
-              </label>
-              {mediaPreview && (
-                <div className="relative">
-                  {mediaFile && mediaFile.type.startsWith('image/') ? (
-                    <img src={mediaPreview} alt="preview" className="w-12 h-12 object-cover rounded-lg mr-2" />
-                  ) : (
-                    <video src={mediaPreview} className="w-12 h-12 rounded-lg mr-2" controls />
-                  )}
-                  <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className="absolute top-0 right-0 bg-black bg-opacity-60 rounded-full p-1 text-white">&times;</button>
-                </div>
-              )}
-              <input
-                type="text"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Nhập tin nhắn..."
-                className="flex-1 bg-gray-900 text-white placeholder-gray-400 rounded-full px-4 py-3 outline-none border border-gray-700 focus:border-blue-500 shadow text-sm"
+                    <div className="flex-shrink-0 p-4 bg-[#23232a] border-t border-gray-800">
+            {showVoiceRecorder ? (
+              <VoiceRecorder 
+                onVoiceRecorded={handleVoiceRecorded}
+                onCancel={() => setShowVoiceRecorder(false)}
               />
-              <button
-                type="submit"
-                disabled={!newMessage.trim() && !mediaFile}
-                className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow text-sm"
-              >
-                <PaperAirplaneIcon className="w-5 h-5" />
-              </button>
-            </form>
+            ) : (
+              <form onSubmit={handleSendMessage} className="flex space-x-3 items-center">
+                <label className="cursor-pointer">
+                  <CameraIcon className="w-6 h-6 text-gray-400 hover:text-blue-500" />
+                  <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowVoiceRecorder(true)}
+                  className="p-2 rounded-full hover:bg-gray-800 transition-colors"
+                >
+                  <MicrophoneIcon className="w-6 h-6 text-gray-400 hover:text-red-500" />
+                </button>
+                {mediaPreview && (
+                  <div className="relative">
+                    {mediaFile && mediaFile.type.startsWith('image/') ? (
+                      <img src={mediaPreview} alt="preview" className="w-12 h-12 object-cover rounded-lg mr-2" />
+                    ) : (
+                      <video src={mediaPreview} className="w-12 h-12 rounded-lg mr-2" controls />
+                    )}
+                    <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className="absolute top-0 right-0 bg-black bg-opacity-60 rounded-full p-1 text-white">&times;</button>
                   </div>
+                )}
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Nhập tin nhắn..."
+                  className="flex-1 bg-gray-900 text-white placeholder-gray-400 rounded-full px-4 py-3 outline-none border border-gray-700 focus:border-blue-500 shadow text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={!newMessage.trim() && !mediaFile}
+                  className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow text-sm"
+                >
+                  <PaperAirplaneIcon className="w-5 h-5" />
+                </button>
+              </form>
+            )}
+          </div>
         </div>
       )}
 

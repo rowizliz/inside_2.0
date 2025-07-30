@@ -3,7 +3,9 @@ import { useAuth } from '../context/AuthContext';
 import supabase from '../supabase';
 import { HeartIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
-import { CameraIcon } from '@heroicons/react/24/outline';
+import { CameraIcon, MicrophoneIcon } from '@heroicons/react/24/outline';
+import VoiceRecorder from './VoiceRecorder';
+import VoicePlayer from './VoicePlayer';
 
 export default function Comment({ postId, comments, onCommentAdded }) {
   const [newComment, setNewComment] = useState('');
@@ -12,6 +14,7 @@ export default function Comment({ postId, comments, onCommentAdded }) {
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
   const [modalMedia, setModalMedia] = useState(null);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
 
   useEffect(() => {
     async function fetchAvatars() {
@@ -93,6 +96,66 @@ export default function Comment({ postId, comments, onCommentAdded }) {
       // Realtime sẽ tự động update comments
     } catch (error) {
       console.error('Error:', error);
+    }
+  };
+
+  // Gửi comment thoại
+  const handleVoiceRecorded = async (audioBlob) => {
+    if (!currentUser) return;
+
+    try {
+      // Tạo file từ blob
+      const fileName = `voice-comments/${currentUser.id}_${Date.now()}.wav`;
+      const file = new File([audioBlob], fileName, { type: 'audio/wav' });
+
+      // Upload lên Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('voice-comments')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        alert('Lỗi upload comment thoại: ' + uploadError.message);
+        return;
+      }
+
+      // Tạo signed URL
+      const expireSeconds = 10000 * 365 * 24 * 60 * 60; // 10.000 năm
+      const { data: signedUrlData, error: signedError } = await supabase.storage
+        .from('voice-comments')
+        .createSignedUrl(fileName, expireSeconds);
+
+      if (signedError || !signedUrlData?.signedUrl) {
+        console.error('Signed URL error:', signedError);
+        throw new Error('Could not get signed URL for voice comment');
+      }
+
+      // Lưu comment vào database
+      const { data, error } = await supabase
+        .from('comments')
+        .insert({
+          post_id: postId,
+          content: '🎤 Comment thoại',
+          author_uid: currentUser.id,
+          author_display_name: currentUser.displayName,
+          author_email: currentUser.email,
+          author_avatar_url: currentUser.avatar_url,
+          likes: 0,
+          media_url: signedUrlData.signedUrl,
+          media_type: 'audio/wav'
+        });
+
+      if (error) {
+        console.error('Error sending voice comment:', error);
+        alert('Lỗi gửi comment thoại: ' + error.message);
+        return;
+      }
+
+      setShowVoiceRecorder(false);
+
+    } catch (error) {
+      console.error('Error in handleVoiceRecorded:', error);
+      alert('Lỗi gửi comment thoại: ' + error.message);
     }
   };
 
@@ -179,38 +242,52 @@ export default function Comment({ postId, comments, onCommentAdded }) {
   return (
     <div className="mt-3">
       {/* Comment Input - Luôn hiển thị */}
-      <form onSubmit={handleSubmitComment} className="mb-3">
-        <div className="flex space-x-2 items-center">
-          <label className="cursor-pointer">
-            <CameraIcon className="w-5 h-5 text-gray-400 hover:text-blue-500" />
-            <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
-          </label>
-          {mediaPreview && (
-            <div className="relative">
-              {mediaFile && mediaFile.type.startsWith('image/') ? (
-                <img src={mediaPreview} alt="preview" className="w-10 h-10 object-cover rounded-lg mr-2" />
-              ) : (
-                <video src={mediaPreview} className="w-10 h-10 rounded-lg mr-2" controls />
-              )}
-              <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className="absolute top-0 right-0 bg-black bg-opacity-60 rounded-full p-1 text-white">&times;</button>
-            </div>
-          )}
-          <input
-            type="text"
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Viết bình luận..."
-            className="flex-1 bg-gray-800 border border-gray-700 rounded-full px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-          />
-          <button
-            type="submit"
-            disabled={!newComment.trim() && !mediaFile}
-            className="bg-blue-500 text-white px-4 py-2 rounded-full text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Gửi
-          </button>
-        </div>
-      </form>
+      {showVoiceRecorder ? (
+        <VoiceRecorder 
+          onVoiceRecorded={handleVoiceRecorded}
+          onCancel={() => setShowVoiceRecorder(false)}
+        />
+      ) : (
+        <form onSubmit={handleSubmitComment} className="mb-3">
+          <div className="flex space-x-2 items-center">
+            <label className="cursor-pointer">
+              <CameraIcon className="w-5 h-5 text-gray-400 hover:text-blue-500" />
+              <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowVoiceRecorder(true)}
+              className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+            >
+              <MicrophoneIcon className="w-5 h-5 text-gray-400 hover:text-red-500" />
+            </button>
+            {mediaPreview && (
+              <div className="relative">
+                {mediaFile && mediaFile.type.startsWith('image/') ? (
+                  <img src={mediaPreview} alt="preview" className="w-10 h-10 object-cover rounded-lg mr-2" />
+                ) : (
+                  <video src={mediaPreview} className="w-10 h-10 rounded-lg mr-2" controls />
+                )}
+                <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className="absolute top-0 right-0 bg-black bg-opacity-60 rounded-full p-1 text-white">&times;</button>
+              </div>
+            )}
+            <input
+              type="text"
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="Viết bình luận..."
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-full px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={!newComment.trim() && !mediaFile}
+              className="bg-blue-500 text-white px-4 py-2 rounded-full text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Gửi
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Comments List */}
       {comments && comments.length > 0 && (
@@ -270,6 +347,10 @@ export default function Comment({ postId, comments, onCommentAdded }) {
                         className="rounded-xl mb-2 max-w-xs max-h-60 cursor-pointer"
                         onClick={() => setModalMedia({ url: comment.media_url, type: comment.media_type })}
                       />
+                    )}
+                    {/* Hiển thị comment thoại */}
+                    {comment.media_url && comment.media_type && comment.media_type === 'audio/wav' && (
+                      <VoicePlayer audioUrl={comment.media_url} isOwn={false} />
                     )}
                     <div className="flex items-center space-x-4 mt-2 text-xs">
                       <span className="text-gray-500">

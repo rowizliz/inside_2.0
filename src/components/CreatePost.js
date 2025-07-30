@@ -290,9 +290,9 @@ export default function CreatePost({ onPostCreated }) {
                   <button
                     type="button"
                     onClick={() => setShowVoiceRecorder(true)}
-                    className="text-red-400 hover:text-red-300 transition-colors"
+                    className="text-red-400 hover:text-red-300 transition-colors p-2 sm:p-1"
                   >
-                    <MicrophoneIcon className="w-5 h-5" />
+                    <MicrophoneIcon className="w-6 h-6 sm:w-5 sm:h-5" />
                   </button>
                 </div>
 

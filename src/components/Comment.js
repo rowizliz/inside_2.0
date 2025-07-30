@@ -257,7 +257,7 @@ export default function Comment({ postId, comments, onCommentAdded }) {
             <button
               type="button"
               onClick={() => setShowVoiceRecorder(true)}
-              className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+              className="p-3 sm:p-2 rounded-full hover:bg-gray-700 transition-colors"
             >
               <MicrophoneIcon className="w-5 h-5 text-gray-400 hover:text-red-500" />
             </button>

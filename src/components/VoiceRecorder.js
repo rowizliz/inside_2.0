@@ -9,6 +9,7 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
   const [audioUrl, setAudioUrl] = useState(null);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [error, setError] = useState(null);
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -19,6 +20,7 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
   // Bắt đầu ghi âm
   const startRecording = async () => {
     try {
+      setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
@@ -45,7 +47,7 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
       }, 1000);
     } catch (error) {
       console.error('Lỗi khi bắt đầu ghi âm:', error);
-      alert('Không thể truy cập microphone. Vui lòng kiểm tra quyền truy cập.');
+      setError('Không thể truy cập microphone. Vui lòng kiểm tra quyền truy cập.');
     }
   };
 
@@ -59,14 +61,19 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
   };
 
   // Phát lại audio
-  const playAudio = () => {
+  const playAudio = async () => {
     if (audioRef.current) {
-      audioRef.current.play();
-      setIsPlaying(true);
-      
-      playbackTimerRef.current = setInterval(() => {
-        setPlaybackTime(audioRef.current.currentTime);
-      }, 100);
+      try {
+        await audioRef.current.play();
+        setIsPlaying(true);
+        
+        playbackTimerRef.current = setInterval(() => {
+          setPlaybackTime(audioRef.current.currentTime);
+        }, 100);
+      } catch (error) {
+        console.error('Error playing audio:', error);
+        setError('Không thể phát audio, vui lòng thử lại');
+      }
     }
   };
 
@@ -90,6 +97,7 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
       setPlaybackTime(0);
       setDuration(0);
       setIsPlaying(false);
+      setError(null);
     }
   };
 
@@ -104,6 +112,7 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
       setRecordingTime(0);
       setPlaybackTime(0);
       setDuration(0);
+      setError(null);
     }
     onCancel();
   };
@@ -127,32 +136,32 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
   return (
     <div className="bg-gray-800 rounded-lg p-4">
       {!audioBlob ? (
-        // Ghi âm mới
-        <div className="flex items-center space-x-4">
+        // Ghi âm mới - Mobile optimized
+        <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
           {!isRecording ? (
             <button
               onClick={startRecording}
-              className="bg-red-500 hover:bg-red-600 text-white p-3 rounded-full transition-colors"
+              className="bg-red-500 hover:bg-red-600 text-white p-4 sm:p-3 rounded-full transition-colors shadow-lg"
             >
               <MicrophoneIcon className="w-6 h-6" />
             </button>
           ) : (
             <button
               onClick={stopRecording}
-              className="bg-gray-600 hover:bg-gray-700 text-white p-3 rounded-full transition-colors"
+              className="bg-gray-600 hover:bg-gray-700 text-white p-4 sm:p-3 rounded-full transition-colors shadow-lg"
             >
               <StopIcon className="w-6 h-6" />
             </button>
           )}
           
-          <div className="flex-1">
-            <div className="text-sm text-gray-300 mb-1">
+          <div className="flex-1 w-full">
+            <div className="text-sm text-gray-300 mb-2 text-center sm:text-left">
               {isRecording ? 'Đang ghi âm...' : 'Nhấn để ghi âm'}
             </div>
             {isRecording && (
-              <div className="flex items-center space-x-2">
-                <div className="flex-1 bg-gray-700 rounded-full h-2">
-                  <div className="bg-red-500 h-2 rounded-full animate-pulse" style={{ width: '30%' }}></div>
+              <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-2">
+                <div className="flex-1 bg-gray-700 rounded-full h-3 sm:h-2">
+                  <div className="bg-red-500 h-3 sm:h-2 rounded-full animate-pulse" style={{ width: '30%' }}></div>
                 </div>
                 <span className="text-xs text-gray-400">{formatTime(recordingTime)}</span>
               </div>
@@ -161,47 +170,48 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
           
           <button
             onClick={cancelRecording}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-white transition-colors px-4 py-2 rounded-lg"
           >
             Hủy
           </button>
         </div>
       ) : (
-        // Phát lại và gửi
-        <div className="space-y-3">
-          <div className="flex items-center space-x-3">
+        // Phát lại và gửi - Mobile optimized
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-3">
             <button
               onClick={isPlaying ? pauseAudio : playAudio}
-              className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-full transition-colors"
+              className="bg-blue-500 hover:bg-blue-600 text-white p-3 sm:p-2 rounded-full transition-colors shadow-lg"
+              disabled={error}
             >
-              {isPlaying ? <PauseIcon className="w-5 h-5" /> : <PlayIcon className="w-5 h-5" />}
+              {isPlaying ? <PauseIcon className="w-5 h-5 sm:w-4 sm:h-4" /> : <PlayIcon className="w-5 h-5 sm:w-4 sm:h-4" />}
             </button>
             
-            <div className="flex-1">
-              <div className="flex items-center space-x-2 mb-1">
-                <div className="flex-1 bg-gray-700 rounded-full h-2">
+            <div className="flex-1 w-full">
+              <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-2 mb-2">
+                <div className="flex-1 bg-gray-700 rounded-full h-3 sm:h-2">
                   <div 
-                    className="bg-blue-500 h-2 rounded-full transition-all"
+                    className="bg-blue-500 h-3 sm:h-2 rounded-full transition-all"
                     style={{ width: `${duration > 0 ? (playbackTime / duration) * 100 : 0}%` }}
                   ></div>
                 </div>
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-gray-400 text-center sm:text-left">
                   {formatTime(playbackTime)} / {formatTime(duration)}
                 </span>
               </div>
             </div>
           </div>
           
-          <div className="flex space-x-2">
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
             <button
               onClick={sendVoiceMessage}
-              className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg transition-colors"
+              className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-3 sm:py-2 px-4 rounded-lg transition-colors"
             >
               Gửi tin nhắn thoại
             </button>
             <button
               onClick={cancelRecording}
-              className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+              className="px-4 py-3 sm:py-2 text-gray-400 hover:text-white transition-colors rounded-lg"
             >
               Hủy
             </button>
@@ -209,17 +219,35 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
         </div>
       )}
       
-      {/* Hidden audio element for playback */}
+      {/* Error message */}
+      {error && (
+        <div className="text-red-400 text-xs mt-3 text-center">
+          {error}
+        </div>
+      )}
+      
+      {/* Hidden audio element with mobile-optimized attributes */}
       {audioUrl && (
         <audio
           ref={audioRef}
           src={audioUrl}
+          preload="auto"
+          playsInline
+          controls={false}
           onLoadedMetadata={() => setDuration(audioRef.current.duration)}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
           onEnded={() => {
             setIsPlaying(false);
             setPlaybackTime(0);
             clearInterval(playbackTimerRef.current);
           }}
+          onTimeUpdate={() => setPlaybackTime(audioRef.current.currentTime)}
+          onError={(e) => {
+            console.error('Audio error:', e);
+            setError('Không thể tải audio');
+          }}
+          onCanPlay={() => setError(null)}
         />
       )}
     </div>

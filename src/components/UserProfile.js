@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeftIcon, PencilIcon, CameraIcon } from '@heroicons/react/24/outline';
+import { PencilIcon, CameraIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import supabase from '../supabase';
 import Post from './Post';
@@ -230,21 +230,6 @@ export default function UserProfile({ userId, onBack }) {
 
   return (
     <div className="min-h-screen bg-black">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-black/80 backdrop-blur-md border-b border-gray-800">
-        <div className="max-w-2xl mx-auto px-4 py-3">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={onBack}
-              className="text-white hover:text-gray-300 transition-colors"
-            >
-              <ArrowLeftIcon className="w-6 h-6" />
-            </button>
-            <h1 className="text-xl font-bold text-white">Profile</h1>
-          </div>
-        </div>
-      </div>
-
       {/* Profile Content */}
       <div className="max-w-2xl mx-auto px-4 py-6">
         {/* Profile Header */}

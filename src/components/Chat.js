@@ -36,6 +36,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   const [currentUserInfo, setCurrentUserInfo] = useState(null);
   const [channelUserInfos, setChannelUserInfos] = useState({});
   const [showMobileChat, setShowMobileChat] = useState(false);
+  const [showChatDetail, setShowChatDetail] = useState(false); // State để quản lý hiển thị chat detail
   // State lưu số tin nhắn chưa đọc cho từng kênh
   // const [unreadCounts, setUnreadCounts] = useState({}); // Bỏ state cục bộ unreadCounts, dùng props
   // Thêm hàm kiểm tra đã xem cho từng message
@@ -1271,6 +1272,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   // Khi user mở kênh chat, đánh dấu tất cả message_reads của user đó trong kênh thành 'seen'
   const handleChannelClick = async (channel) => {
     setCurrentChannel(channel);
+    setShowChatDetail(true); // Hiển thị chat detail
     await updateCurrentUserInfo(channel);
     if (window.innerWidth < 768) setShowMobileChat(true);
     // Lấy tất cả message_id trong kênh
@@ -1381,256 +1383,252 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   }
 
   return (
-    <div className="w-full flex flex-col items-center justify-center px-2 md:px-0">
-      <div className="w-full max-w-4xl flex flex-col md:flex-row justify-center items-start gap-0 md:gap-4">
-        {/* Sidebar */}
-        <div className={`w-full md:w-80 bg-[#18181b] border-r border-gray-800 flex flex-col md:h-[600px] rounded-none md:rounded-2xl shadow-xl overflow-hidden flex-shrink-0 ${showMobileChat ? 'hidden' : 'block'} md:block`}>
-          {/* Header */}
-          <div className="p-4 border-b border-gray-800">
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setShowUserList(!showUserList)}
-                className={`flex-1 bg-gray-900 text-white px-4 py-2 rounded-full hover:bg-gray-800 transition-colors text-sm font-medium shadow ${showUserList ? 'ring-2 ring-blue-400' : ''}`}
-              >
-                Người dùng ({users.length})
-              </button>
-              <button
-                onClick={() => setShowCreateChannel(!showCreateChannel)}
-                className={`flex-1 bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-500 transition-colors text-sm font-medium shadow ${showCreateChannel ? 'ring-2 ring-blue-400' : ''}`}
-              >
-                + Nhóm
-              </button>
+    <>
+      {/* Chat List View - Hiển thị khi chưa vào chat detail */}
+      {!showChatDetail && (
+        <div className="w-full h-full bg-[#0a0a0a] flex">
+          {/* Sidebar */}
+          <div className="w-full bg-[#18181b] flex flex-col">
+            {/* Navigation Buttons */}
+            <div className="p-4 border-b border-gray-800">
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setShowUserList(!showUserList)}
+                  className={`flex-1 bg-gray-900 text-white px-4 py-2 rounded-full hover:bg-gray-800 transition-colors text-sm font-medium shadow ${showUserList ? 'ring-2 ring-blue-400' : ''}`}
+                >
+                  Người dùng ({users.length})
+                </button>
+                <button
+                  onClick={() => setShowCreateChannel(!showCreateChannel)}
+                  className={`flex-1 bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-500 transition-colors text-sm font-medium shadow ${showCreateChannel ? 'ring-2 ring-blue-400' : ''}`}
+                >
+                  + Nhóm
+                </button>
+              </div>
+            </div>
+            
+            {/* Chat List */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-2 space-y-1">
+              {sortedChannels.map((channel, idx) => {
+                const isActive = currentChannel && channel.id === currentChannel.id;
+                let info = null;
+                if (channel.type === 'direct') {
+                  info = channelUserInfos[channel.id];
+                } else if (channel.type === 'group') {
+                  const members = channel.chat_channel_members || [];
+                  if (members.length > 0) {
+                    info = {
+                      avatar_url: members[0].avatar_url,
+                      display_name: members[0].display_name
+                    };
+                  }
+                }
+                const latestMsg = latestMessages[channel.id];
+                return (
+                  <div
+                    key={channel.id}
+                    onClick={() => handleChannelClick(channel)}
+                    className={`flex items-center space-x-3 px-3 py-2 rounded-xl cursor-pointer transition-all ${isActive ? 'bg-blue-900/60' : 'hover:bg-gray-800/80'} group`}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white overflow-hidden">
+                      {info?.avatar_url ? (
+                        <img src={info.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        (info?.display_name || channel.name || 'U').charAt(0)
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col items-start justify-center">
+                      <div className="text-white font-medium truncate text-left w-full">
+                        {info?.display_name || channel.name || 'Unknown'}
+                      </div>
+                      <div className="text-xs text-gray-400 truncate text-left w-full flex items-center">
+                        {latestMsg ? latestMsg.content : 'Chưa có tin nhắn'}
+                        {unreadCounts[channel.id] > 0 && (
+                          <span className="ml-2 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold animate-pulse">
+                            {unreadCounts[channel.id]}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          {/* User List Popup */}
-          {showUserList && (
-            <div className="p-4 border-b border-gray-800 bg-[#18181b]">
-              <h3 className="text-white font-semibold mb-3">Chat riêng với người dùng</h3>
-              <div className="text-gray-400 text-sm mb-3">Click vào user để bắt đầu chat riêng:</div>
-              <div className="max-h-48 overflow-y-auto">
-                {users.length === 0 ? (
-                  <div className="text-gray-400 text-sm">Không có users nào. Đang tải...</div>
+        </div>
+      )}
+
+      {/* Chat Detail View - Hiển thị khi vào chat */}
+      {showChatDetail && currentChannel && (
+        <div className="w-full h-full bg-[#23232a] flex flex-col">
+          {/* Chat Header với nút Back */}
+          <div className="bg-[#23232a] border-b border-gray-800 p-4 flex-shrink-0 flex items-center">
+            <button 
+              onClick={() => setShowChatDetail(false)}
+              className="mr-3 p-2 rounded-full hover:bg-gray-800 transition-colors"
+            >
+              <ArrowLeftIcon className="w-5 h-5 text-white" />
+            </button>
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white overflow-hidden">
+                {currentChannel.type === 'direct' ? (
+                  currentUserInfo?.avatar_url ? (
+                    <img src={currentUserInfo.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+                  ) : (
+                    (currentUserInfo?.display_name || currentUserInfo?.email || 'U').charAt(0)
+                  )
                 ) : (
-                  users.map(user => (
-                    <div 
-                      key={user.id} 
-                      onClick={() => createDirectChannel(user)}
-                      className="flex items-center space-x-3 p-2 hover:bg-gray-800 rounded-lg cursor-pointer transition-colors"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm">
-                        {user.avatar_url ? (
-                          <img src={user.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
-                        ) : (
-                          (user.display_name || user.email || 'U').charAt(0)
-                        )}
-                </div>
-                      <div className="flex-1">
-                        <div className="text-white text-sm font-medium">
-                          {user.display_name || 'Unknown'}
-                </div>
-                        <div className="text-gray-400 text-xs">
-                          {user.bio || 'No bio'}
-                        </div>
-                      </div>
-                      <div className="text-gray-400 text-xs">
-                        Chat riêng
+                  // Xóa icon chat cho group chat vì chưa có function
+                  null
+                )}
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-lg">
+                  {currentChannel.type === 'direct' 
+                    ? (currentUserInfo?.display_name || currentUserInfo?.email || 'Unknown')
+                    : currentChannel.name
+                  }
+                </h3>
+                <p className="text-gray-400 text-sm">
+                  {currentChannel.type === 'direct' ? '💬 Chat riêng' : '👥 Group chat'}
+                </p>
               </div>
             </div>
-          ))
-        )}
-              </div>
+          </div>
+          
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto px-4 py-4 custom-scrollbar bg-[#23232a]" onScroll={handleScroll} ref={messagesContainerRef}>
+            <div className="space-y-4">
+              {isLoadingMore && (
+                <div className="text-center text-xs text-gray-400 mb-2">Đang tải thêm tin nhắn...</div>
+              )}
+              {messages.map((msg, idx) => {
+                const isOwn = msg.author_uid === currentUser?.id;
+                return (
+                  <div key={msg.id + '-' + idx} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}> 
+                    <div className="flex flex-col max-w-[70%]">
+                      <div className={`px-4 py-2 rounded-2xl shadow ${isOwn ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white'} text-sm break-words message-bubble`}>{msg.content}</div>
+                      <div className={`text-xs text-gray-500 mt-1 ${isOwn ? 'text-right' : 'text-left'}`}>{new Date(msg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
             </div>
-          )}
-          {/* Create Group Modal */}
-          {showCreateChannel && (
-            <div className="p-4 border-b border-gray-800 bg-[#18181b]">
-              <h3 className="text-white font-semibold mb-3">Tạo group chat mới</h3>
+          </div>
+          
+          {/* Input */}
+          <div className="flex-shrink-0 p-4 bg-[#23232a] border-t border-gray-800">
+            <form onSubmit={handleSendMessage} className="flex space-x-3">
               <input
                 type="text"
-                value={newChannelName}
-                onChange={(e) => setNewChannelName(e.target.value)}
-                placeholder="Tên group chat..."
-                className="w-full bg-gray-800 text-white placeholder-gray-400 rounded-lg px-3 py-2 mb-3 outline-none border border-gray-700"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Nhập tin nhắn..."
+                className="flex-1 bg-gray-900 text-white placeholder-gray-400 rounded-full px-4 py-3 outline-none border border-gray-700 focus:border-blue-500 shadow text-sm"
               />
-              <div className="max-h-32 overflow-y-auto mb-3">
-                <div className="text-gray-400 text-sm mb-2">Chọn thành viên cho group:</div>
-                {users.map(user => (
-                  <label key={user.id} className="flex items-center space-x-2 text-white mb-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedUsers.includes(user.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedUsers([...selectedUsers, user.id]);
-                        } else {
-                          setSelectedUsers(selectedUsers.filter(id => id !== user.id));
-                        }
-                      }}
-                      className="rounded"
-                    />
-                    <span>{user.display_name || user.email}</span>
-                  </label>
-                ))}
-              </div>
-              <div className="flex space-x-2">
-                <button
-                  onClick={createGroupChannel}
-                  disabled={!newChannelName.trim() || selectedUsers.length === 0}
-                  className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50"
-                >
-                  Tạo Group
-                </button>
-                <button
-                  onClick={() => {
-                    setShowCreateChannel(false);
-                    setNewChannelName('');
-                    setSelectedUsers([]);
-                  }}
-                  className="bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
-                >
-                  Hủy
-                </button>
-              </div>
-            </div>
-          )}
-          {/* Danh sách kênh/chat */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-2 space-y-1">
-            {sortedChannels.map((channel, idx) => {
-              const isActive = currentChannel && channel.id === currentChannel.id;
-              // Group chat: lấy avatar và tên từng thành viên (hiển thị avatar nhóm hoặc avatar người đầu tiên)
-              let info = null;
-              if (channel.type === 'direct') {
-                info = channelUserInfos[channel.id];
-              } else if (channel.type === 'group') {
-                // Lấy avatar và tên của thành viên đầu tiên (hoặc logic avatar nhóm)
-                const members = channel.chat_channel_members || [];
-                if (members.length > 0) {
-                  info = {
-                    avatar_url: members[0].avatar_url,
-                    display_name: members[0].display_name
-                  };
-                }
-              }
-              const latestMsg = latestMessages[channel.id];
-              return (
-                <div
-                  key={channel.id}
-                  onClick={() => handleChannelClick(channel)}
-                  className={`flex items-center space-x-3 px-3 py-2 rounded-xl cursor-pointer transition-all ${isActive ? 'bg-blue-900/60' : 'hover:bg-gray-800/80'} group`}
-                >
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white overflow-hidden">
-                    {info?.avatar_url ? (
-                      <img src={info.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
-                    ) : (
-                      (info?.display_name || channel.name || 'U').charAt(0)
-                    )}
-                </div>
-                  <div className="flex-1 min-w-0 flex flex-col items-start justify-center">
-                    <div className="text-white font-medium truncate text-left w-full">
-                      {info?.display_name || channel.name || 'Unknown'}
-                </div>
-                    <div className="text-xs text-gray-400 truncate text-left w-full flex items-center">
-                      {latestMsg ? latestMsg.content : 'Chưa có tin nhắn'}
-                      {unreadCounts[channel.id] > 0 && (
-                        <span className="ml-2 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold animate-pulse">
-                          {unreadCounts[channel.id]}
-                        </span>
-                      )}
-              </div>
-            </div>
-                </div>
-              );
-            })}
+              <button
+                type="submit"
+                disabled={!newMessage.trim()}
+                className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow text-sm"
+              >
+                <PaperAirplaneIcon className="w-5 h-5" />
+              </button>
+            </form>
           </div>
-      </div>
-
-        {/* Main Chat Area */}
-        {/* Mobile: full screen fixed overlay */}
-        <div className={
-          showMobileChat && window.innerWidth < 768
-            ? 'fixed inset-0 z-50 w-full h-[100vh] bg-[#23232a] flex flex-col'
-            : 'flex-1 min-w-0 max-w-full md:max-w-[700px] mx-auto flex flex-col h-full md:h-[600px] bg-[#23232a] rounded-none md:rounded-2xl shadow-2xl overflow-hidden'
-        }>
-          {currentChannel ? (
-            <>
-              {/* Chat Header */}
-              <div className="bg-[#23232a] border-b border-gray-800 p-2 md:p-4 flex-shrink-0 flex items-center">
-                {/* Nút back chỉ hiện trên mobile */}
-                {window.innerWidth < 768 && (
-                  <button onClick={() => setShowMobileChat(false)} className="mr-1 md:mr-2 p-2 rounded-full hover:bg-gray-800">
-                    <ArrowLeftIcon className="w-5 h-5 md:w-6 md:h-6 text-white" />
-                  </button>
-                )}
-                <div className="flex items-center space-x-2 md:space-x-3">
-                  <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white overflow-hidden">
-                    {currentChannel.type === 'direct' ? (
-                      currentUserInfo?.avatar_url ? (
-                        <img src={currentUserInfo.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
-                      ) : (
-                        (currentUserInfo?.display_name || currentUserInfo?.email || 'U').charAt(0)
-                      )
-                    ) : (
-                      <ChatBubbleLeftRightIcon className="w-5 h-5 md:w-6 md:h-6" />
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="text-white font-bold text-sm md:text-lg">
-                      {currentChannel.type === 'direct' 
-                        ? (currentUserInfo?.display_name || currentUserInfo?.email || 'Unknown')
-                        : currentChannel.name
-                      }
-                    </h3>
-                    <p className="text-gray-400 text-xs md:text-sm">
-                      {currentChannel.type === 'direct' ? '💬 Chat riêng' : '👥 Group chat'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-2 md:px-4 py-2 md:py-6 custom-scrollbar bg-[#23232a]" onScroll={handleScroll} ref={messagesContainerRef}>
-                <div className="space-y-3 md:space-y-4">
-                  {isLoadingMore && (
-                    <div className="text-center text-xs text-gray-400 mb-2">Đang tải thêm tin nhắn...</div>
-                  )}
-                  {messages.map((msg, idx) => {
-                    const isOwn = msg.author_uid === currentUser?.id;
-                    return (
-                      <div key={msg.id + '-' + idx} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}> 
-                        <div className="flex flex-col max-w-[90vw] md:max-w-[70%]">
-                          <div className={`px-3 py-2 md:px-4 md:py-2 rounded-2xl shadow ${isOwn ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white'} text-sm md:text-base break-words`}>{msg.content}</div>
-                          <div className={`text-xs text-gray-500 mt-1 ${isOwn ? 'text-right' : 'text-left'}`}>{new Date(msg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
-        <div />
-      </div>
-              </div>
-              {/* Input */}
-              <div className="flex-shrink-0 p-2 md:p-4 bg-[#23232a] border-t border-gray-800">
-                <form onSubmit={handleSendMessage} className="flex space-x-2 md:space-x-3">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Nhập tin nhắn..."
-                    className="flex-1 bg-gray-900 text-white placeholder-gray-400 rounded-full px-3 py-2 md:px-4 md:py-3 outline-none border border-gray-700 focus:border-blue-500 shadow text-sm md:text-base"
-          />
-          <button
-            type="submit"
-            disabled={!newMessage.trim()}
-                    className="bg-blue-600 text-white p-2 md:p-3 rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow text-sm md:text-base"
-          >
-                    <PaperAirplaneIcon className="w-5 h-5 md:w-6 md:h-6" />
-          </button>
-        </form>
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm md:text-base">Chọn một cuộc trò chuyện để bắt đầu</div>
-          )}
         </div>
-      </div>
-    </div>
+      )}
+
+      {/* Modals */}
+      {showUserList && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="w-full max-w-sm mx-auto bg-[#23232a] rounded-2xl shadow-2xl p-5 relative animate-fadeIn">
+            <button onClick={() => setShowUserList(false)} className="absolute top-3 right-3 text-gray-400 hover:text-white text-xl font-bold">×</button>
+            <h3 className="text-white font-semibold mb-3 text-lg text-center">Chat riêng với người dùng</h3>
+            <div className="text-gray-400 text-sm mb-3 text-center">Chọn user để bắt đầu chat riêng:</div>
+            <div className="max-h-60 overflow-y-auto custom-scrollbar divide-y divide-gray-800">
+              {users.length === 0 ? (
+                <div className="text-gray-400 text-sm text-center py-6">Không có users nào. Đang tải...</div>
+              ) : (
+                users.map(user => (
+                  <div 
+                    key={user.id} 
+                    onClick={() => { createDirectChannel(user); setShowUserList(false); }}
+                    className="flex items-center space-x-3 py-3 px-2 hover:bg-gray-800 rounded-xl cursor-pointer transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm">
+                      {user.avatar_url ? (
+                        <img src={user.avatar_url} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        (user.display_name || user.email || 'U').charAt(0)
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white text-sm font-medium truncate">{user.display_name || 'Unknown'}</div>
+                      <div className="text-gray-400 text-xs truncate">{user.bio || 'No bio'}</div>
+                    </div>
+                    <div className="text-gray-400 text-xs whitespace-nowrap">Chat riêng</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {showCreateChannel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="w-full max-w-sm mx-auto bg-[#23232a] rounded-2xl shadow-2xl p-5 relative animate-fadeIn">
+            <button onClick={() => setShowCreateChannel(false)} className="absolute top-3 right-3 text-gray-400 hover:text-white text-xl font-bold">×</button>
+            <h3 className="text-white font-semibold mb-3 text-lg text-center">Tạo group chat mới</h3>
+            <input
+              type="text"
+              value={newChannelName}
+              onChange={(e) => setNewChannelName(e.target.value)}
+              placeholder="Tên group chat..."
+              className="w-full bg-gray-800 text-white placeholder-gray-400 rounded-lg px-3 py-2 mb-3 outline-none border border-gray-700"
+            />
+            <div className="max-h-32 overflow-y-auto mb-3 custom-scrollbar">
+              <div className="text-gray-400 text-sm mb-2">Chọn thành viên cho group:</div>
+              {users.map(user => (
+                <label key={user.id} className="flex items-center space-x-2 text-white mb-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedUsers.includes(user.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedUsers([...selectedUsers, user.id]);
+                      } else {
+                        setSelectedUsers(selectedUsers.filter(id => id !== user.id));
+                      }
+                    }}
+                    className="rounded"
+                  />
+                  <span>{user.display_name || user.email}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex space-x-2 justify-center">
+              <button
+                onClick={createGroupChannel}
+                disabled={!newChannelName.trim() || selectedUsers.length === 0}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50"
+              >
+                Tạo Group
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreateChannel(false);
+                  setNewChannelName('');
+                  setSelectedUsers([]);
+                }}
+                className="bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 } 

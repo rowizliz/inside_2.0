@@ -48,11 +48,11 @@ export function AuthProvider({ children }) {
         throw error;
       }
 
-      // Đảm bảo session được lưu
       if (data.session) {
         console.log('Login successful, session created');
-        // Refresh session ngay sau khi login
-        await supabase.auth.getSession();
+        // Đảm bảo session được lưu
+        console.log('Saving session to localStorage...');
+        localStorage.setItem('inside-app-auth', JSON.stringify(data.session));
       }
 
       return data;
@@ -143,12 +143,25 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Thêm hàm timeout cho fetchUserProfile
-  async function fetchUserProfileWithTimeout(user, ms = 5000) {
-    return Promise.race([
-      fetchUserProfile(user),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('fetchUserProfile timeout')), ms))
-    ]);
+  // Thêm hàm timeout cho fetchUserProfile - tăng timeout lên 15 giây
+  async function fetchUserProfileWithTimeout(user, ms = 15000) {
+    try {
+      return await Promise.race([
+        fetchUserProfile(user),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('fetchUserProfile timeout')), ms))
+      ]);
+    } catch (error) {
+      console.warn('fetchUserProfile timeout, using basic user data:', error);
+      // Thay vì set currentUser thành null, sử dụng basic user data
+      const basicUser = {
+        ...user,
+        displayName: user.user_metadata?.display_name || user.email,
+        avatar_url: user.user_metadata?.avatar_url || null,
+        bio: ''
+      };
+      setCurrentUser(basicUser);
+      return basicUser;
+    }
   }
 
   // Hàm cập nhật profile user trong context (dùng sau khi update profile/avatar)
@@ -161,37 +174,89 @@ export function AuthProvider({ children }) {
     }));
   };
 
+
+
   useEffect(() => {
     console.log('AuthProvider: Setting up auth listener');
     
-    // BỎ QUA HOÀN TOÀN fetch profile, chỉ lấy user từ session
+    // Debug: Kiểm tra localStorage
+    const storedSession = localStorage.getItem('inside-app-auth');
+    console.log('Stored session in localStorage:', storedSession ? 'exists' : 'not found');
+    
+    // Thử restore session từ localStorage nếu có
+    if (storedSession) {
+      try {
+        const parsedSession = JSON.parse(storedSession);
+        console.log('Parsed stored session:', parsedSession);
+        
+        // Kiểm tra xem session có còn hợp lệ không
+        if (parsedSession.expires_at && parsedSession.expires_at * 1000 > Date.now()) {
+          console.log('Stored session is still valid, setting user...');
+          const basicUser = {
+            ...parsedSession.user,
+            displayName: parsedSession.user.user_metadata?.display_name || parsedSession.user.email,
+            avatar_url: parsedSession.user.user_metadata?.avatar_url || null,
+            bio: ''
+          };
+          setCurrentUser(basicUser);
+          setLoading(false);
+          return; // Thoát sớm nếu đã có session hợp lệ
+        } else {
+          console.log('Stored session expired, removing...');
+          localStorage.removeItem('inside-app-auth');
+        }
+      } catch (error) {
+        console.error('Error parsing stored session:', error);
+        localStorage.removeItem('inside-app-auth');
+      }
+    }
+    
+    // Timeout để tránh loading vô hạn
     const timeoutId = setTimeout(() => {
       console.log('AuthProvider: Timeout reached, forcing loading to false');
       setLoading(false);
-    }, 5000);
+    }, 10000); // Tăng timeout lên 10 giây
 
-    // Hàm refresh session định kỳ
-    const refreshSession = async () => {
+    // Lấy session ban đầu
+    const initializeAuth = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error('Session refresh error:', error);
-          return;
+        // Thử lấy session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        console.log('Initial session:', session);
+        console.log('Session user:', session?.user);
+        console.log('Session expires_at:', session?.expires_at);
+        
+        if (sessionError) {
+          console.error('Session error:', sessionError);
         }
-        if (session) {
-          console.log('Session refreshed successfully');
+        
+        // Nếu không có session, thử lấy user
+        if (!session?.user) {
+          const { data: { user }, error: userError } = await supabase.auth.getUser();
+          console.log('Fallback user:', user);
+          if (userError) {
+            console.error('User error:', userError);
+          }
+          
+          if (user) {
+            // Tạo session giả từ user
+            const fakeSession = { user };
+            await handleUserSession(fakeSession);
+          } else {
+            setCurrentUser(null);
+          }
+        } else {
+          await handleUserSession(session);
         }
-      } catch (err) {
-        console.error('Error refreshing session:', err);
+      } catch (error) {
+        console.error('Error in initializeAuth:', error);
+        setCurrentUser(null);
+      } finally {
+        setLoading(false);
       }
     };
-
-    // Refresh session mỗi 30 phút
-    const refreshInterval = setInterval(refreshSession, 30 * 60 * 1000);
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      console.log('Initial session:', session);
-      clearTimeout(timeoutId);
+    
+    const handleUserSession = async (session) => {
       try {
         if (session?.user) {
           await fetchUserProfileWithTimeout(session.user);
@@ -200,36 +265,34 @@ export function AuthProvider({ children }) {
         }
       } catch (err) {
         console.error('Error in fetchUserProfile:', err);
-        setCurrentUser(null);
+        // Không set currentUser thành null nếu có session
+        if (session?.user) {
+          const basicUser = {
+            ...session.user,
+            displayName: session.user.user_metadata?.display_name || session.user.email,
+            avatar_url: session.user.user_metadata?.avatar_url || null,
+            bio: ''
+          };
+          setCurrentUser(basicUser);
+        } else {
+          setCurrentUser(null);
+        }
       }
-      setLoading(false);
-    }).catch(error => {
-      console.error('Error getting session:', error);
-      clearTimeout(timeoutId);
-      setCurrentUser(null);
-      setLoading(false);
-    });
+    };
+    
+    initializeAuth();
 
+    // Lắng nghe thay đổi auth state
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state change:', event, session);
-        try {
-          if (session?.user) {
-            await fetchUserProfileWithTimeout(session.user);
-          } else {
-            setCurrentUser(null);
-          }
-        } catch (err) {
-          console.error('Error in fetchUserProfile:', err);
-          setCurrentUser(null);
-        }
+        await handleUserSession(session);
         setLoading(false);
       }
     );
 
     return () => {
       clearTimeout(timeoutId);
-      clearInterval(refreshInterval);
       subscription.unsubscribe();
     };
   }, []);

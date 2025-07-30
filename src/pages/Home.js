@@ -10,12 +10,46 @@ import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 export default function Home() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState('feed'); // 'feed' | 'chat' | 'profileMenu' | 'profile'
+  const [activeView, setActiveView] = useState(() => {
+    // Lấy activeView từ localStorage khi khởi tạo
+    const savedView = localStorage.getItem('inside-active-view');
+    return savedView || 'feed';
+  }); // 'feed' | 'chat' | 'profileMenu' | 'profile'
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
-  const [profileUserId, setProfileUserId] = useState(null);
+  const [showProfile, setShowProfile] = useState(() => {
+    // Lấy showProfile từ localStorage khi khởi tạo
+    const savedShowProfile = localStorage.getItem('inside-show-profile');
+    return savedShowProfile === 'true';
+  });
+  const [profileUserId, setProfileUserId] = useState(() => {
+    // Lấy profileUserId từ localStorage khi khởi tạo
+    const savedProfileUserId = localStorage.getItem('inside-profile-user-id');
+    return savedProfileUserId || null;
+  });
   const [unreadCounts, setUnreadCounts] = useState({});
   const { currentUser, logout } = useAuth();
+
+  // Function để update activeView và lưu vào localStorage
+  const updateActiveView = (newView) => {
+    setActiveView(newView);
+    localStorage.setItem('inside-active-view', newView);
+  };
+
+  // Function để update showProfile và lưu vào localStorage
+  const updateShowProfile = (show) => {
+    setShowProfile(show);
+    localStorage.setItem('inside-show-profile', show.toString());
+  };
+
+  // Function để update profileUserId và lưu vào localStorage
+  const updateProfileUserId = (userId) => {
+    setProfileUserId(userId);
+    if (userId) {
+      localStorage.setItem('inside-profile-user-id', userId);
+    } else {
+      localStorage.removeItem('inside-profile-user-id');
+    }
+  };
 
   // Hàm fetch số message chưa đọc cho user
   async function fetchUnreadCounts() {
@@ -141,13 +175,13 @@ export default function Home() {
   };
 
   const handleOpenProfile = (userId = currentUser.id) => {
-    setProfileUserId(userId);
-    setShowProfile(true);
+    updateProfileUserId(userId);
+    updateShowProfile(true);
   };
 
   const handleBackFromProfile = () => {
-    setShowProfile(false);
-    setProfileUserId(null);
+    updateShowProfile(false);
+    updateProfileUserId(null);
   };
 
   // Menu popup logic
@@ -155,8 +189,8 @@ export default function Home() {
   const handleProfileMenuClose = () => setShowProfileMenu(false);
   const handleProfileClick = () => {
     setShowProfileMenu(false);
-    setProfileUserId(currentUser.id);
-    setShowProfile(true);
+    updateProfileUserId(currentUser.id);
+    updateShowProfile(true);
   };
   const handleSettingsClick = () => {
     setShowProfileMenu(false);
@@ -165,6 +199,10 @@ export default function Home() {
   };
   const handleLogoutClick = async () => {
     setShowProfileMenu(false);
+    // Clear localStorage khi logout
+    localStorage.removeItem('inside-active-view');
+    localStorage.removeItem('inside-show-profile');
+    localStorage.removeItem('inside-profile-user-id');
     await logout();
   };
 
@@ -185,25 +223,27 @@ export default function Home() {
             {/* Logo Inside */}
             <button
               className="text-xl font-bold text-white hover:opacity-80 transition"
-              onClick={() => { setActiveView('feed'); setShowProfile(false); }}
+              onClick={() => { updateActiveView('feed'); updateShowProfile(false); }}
             >
               Inside
             </button>
             <div className="flex items-center space-x-4">
-              {/* Nút chat */}
-              <button
-                onClick={() => { setActiveView('chat'); setShowProfile(false); }}
-                className={`p-2 rounded-full hover:bg-gray-800 transition-colors ${activeView === 'chat' ? 'bg-gray-800' : ''} relative`}
-                title="Chat"
-              >
-                <ChatBubbleLeftRightIcon className="w-6 h-6 text-white" />
-                {/* Badge số tin nhắn chưa đọc, nếu có */}
-                {Object.values(unreadCounts).reduce((a, b) => a + b, 0) > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 font-bold animate-pulse">
-                    {Object.values(unreadCounts).reduce((a, b) => a + b, 0)}
-                  </span>
-                )}
-              </button>
+              {/* Nút chat - ẩn khi đang ở trang chat */}
+              {activeView !== 'chat' && (
+                <button
+                  onClick={() => { updateActiveView('chat'); updateShowProfile(false); }}
+                  className="p-2 rounded-full hover:bg-gray-800 transition-colors relative"
+                  title="Chat"
+                >
+                  <ChatBubbleLeftRightIcon className="w-6 h-6 text-white" />
+                  {/* Badge số tin nhắn chưa đọc, nếu có */}
+                  {Object.values(unreadCounts).reduce((a, b) => a + b, 0) > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 font-bold animate-pulse">
+                      {Object.values(unreadCounts).reduce((a, b) => a + b, 0)}
+                    </span>
+                  )}
+                </button>
+              )}
               {/* Nút profile/avatar */}
               <div className="relative">
                 <button

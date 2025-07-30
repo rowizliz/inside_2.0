@@ -3,6 +3,7 @@ import { PencilIcon, CameraIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import supabase from '../supabase';
 import Post from './Post';
+import CreatePost from './CreatePost';
 
 // Hàm resize ảnh về 250x250, trả về Promise<Blob>
 function resizeImageTo250(file) {
@@ -342,6 +343,13 @@ export default function UserProfile({ userId, onBack }) {
             </div>
           </div>
         </div>
+
+        {/* Thêm mục đăng bài viết mới */}
+        {isOwnProfile && (
+          <div className="mb-6">
+            <CreatePost onPostCreated={fetchUserPosts} />
+          </div>
+        )}
 
         {/* Posts */}
         <div className="space-y-4">

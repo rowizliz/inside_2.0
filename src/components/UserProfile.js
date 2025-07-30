@@ -52,6 +52,7 @@ export default function UserProfile({ userId, onBack }) {
   const isOwnProfile = currentUser && currentUser.id === userId;
 
   useEffect(() => {
+    if (!userId) return;
     fetchUserData();
     fetchUserPosts();
   }, [userId]);
@@ -96,21 +97,22 @@ export default function UserProfile({ userId, onBack }) {
   };
 
   const fetchUserPosts = async () => {
+    if (!userId) return;
     try {
       const { data, error } = await supabase
         .from('posts')
         .select('*')
         .eq('author_uid', userId)
         .order('created_at', { ascending: false });
-
       if (error) {
         console.error('Error fetching posts:', error);
+        setPosts([]);
         return;
       }
-
       setPosts(data || []);
     } catch (error) {
       console.error('Error:', error);
+      setPosts([]);
     } finally {
       setLoading(false);
     }
@@ -345,9 +347,12 @@ export default function UserProfile({ userId, onBack }) {
         </div>
 
         {/* Thêm mục đăng bài viết mới */}
-        {isOwnProfile && (
+        {isOwnProfile && currentUser && (
           <div className="mb-6">
-            <CreatePost onPostCreated={fetchUserPosts} />
+            <CreatePost onPostCreated={() => {
+              // Bảo vệ callback, chỉ fetch lại bài viết
+              fetchUserPosts();
+            }} />
           </div>
         )}
 
@@ -361,7 +366,7 @@ export default function UserProfile({ userId, onBack }) {
             </div>
           ) : (
             posts.map(post => (
-              <Post key={post.id} post={post} onPostDeleted={handlePostDeleted} />
+              post && <Post key={post.id} post={post} onPostDeleted={handlePostDeleted} />
             ))
           )}
         </div>

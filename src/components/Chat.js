@@ -1699,9 +1699,9 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                 <button
                   type="button"
                   onClick={() => setShowVoiceRecorder(true)}
-                  className="p-3 sm:p-2 rounded-full hover:bg-gray-800 transition-colors"
+                  className="p-1.5 rounded-full hover:bg-gray-800 transition-colors flex-shrink-0"
                 >
-                  <MicrophoneIcon className="w-6 h-6 sm:w-5 sm:h-5 text-gray-400 hover:text-red-500" />
+                  <MicrophoneIcon className="w-4 h-4 text-gray-400 hover:text-red-500" />
                 </button>
                 {mediaPreview && (
                   <div className="relative">

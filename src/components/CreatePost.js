@@ -233,68 +233,71 @@ export default function CreatePost({ onPostCreated }) {
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Chia sẻ điều gì đó..."
-                className="w-full bg-transparent text-white placeholder-gray-400 resize-none outline-none text-lg"
+                className="w-full bg-transparent text-white placeholder-gray-400 resize-none outline-none text-lg text-center sm:text-left px-2"
                 rows="3"
               />
 
               {/* Media Preview */}
               {mediaPreview && (
-                <div className="relative mb-3">
-                  {mediaFile?.type?.startsWith('image/') ? (
-                    <img 
-                      src={mediaPreview} 
-                      alt="Preview" 
-                      className="rounded-2xl max-w-full max-h-96 object-cover"
-                    />
-                  ) : mediaFile?.type?.startsWith('video/') ? (
-                    <video 
-                      src={mediaPreview} 
-                      controls 
-                      className="rounded-2xl max-w-full max-h-96"
-                    />
-                  ) : null}
-                  
-                  <button
-                    type="button"
-                    onClick={removeMedia}
-                    className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 transition-colors"
-                  >
-                    <XMarkIcon className="w-4 h-4" />
-                  </button>
+                <div className="relative mb-3 flex justify-center">
+                  <div className="w-full max-w-sm sm:max-w-md">
+                    {mediaFile?.type?.startsWith('image/') ? (
+                      <img 
+                        src={mediaPreview} 
+                        alt="Preview" 
+                        className="rounded-2xl w-full h-auto object-cover"
+                      />
+                    ) : mediaFile?.type?.startsWith('video/') ? (
+                      <video 
+                        src={mediaPreview} 
+                        controls 
+                        className="rounded-2xl w-full h-auto"
+                      />
+                    ) : null}
+                    
+                    <button
+                      type="button"
+                      onClick={removeMedia}
+                      className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 transition-colors"
+                    >
+                      <XMarkIcon className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               )}
 
               {/* Actions */}
-              <div className="flex items-center justify-between pt-3">
-                <div className="flex items-center space-x-4">
-                  <label className="cursor-pointer text-blue-400 hover:text-blue-300 transition-colors">
-                    <PhotoIcon className="w-5 h-5" />
-                    <input
-                      type="file"
-                      accept="image/*,video/*"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                    />
-                  </label>
-                  
-                  <label className="cursor-pointer text-green-400 hover:text-green-300 transition-colors">
-                    <VideoCameraIcon className="w-5 h-5" />
-                    <input
-                      type="file"
-                      accept="video/*"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                    />
-                  </label>
+              <div className="flex items-center justify-center space-x-6 sm:space-x-8 pt-3">
+                <label className="cursor-pointer text-blue-400 hover:text-blue-300 transition-colors flex flex-col items-center space-y-1">
+                  <PhotoIcon className="w-5 h-5" />
+                  <span className="text-xs">Ảnh</span>
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                </label>
+                
+                <label className="cursor-pointer text-green-400 hover:text-green-300 transition-colors flex flex-col items-center space-y-1">
+                  <VideoCameraIcon className="w-5 h-5" />
+                  <span className="text-xs">Video</span>
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                </label>
 
-                  <button
-                    type="button"
-                    onClick={() => setShowVoiceRecorder(true)}
-                    className="text-red-400 hover:text-red-300 transition-colors p-2 sm:p-1"
-                  >
-                    <MicrophoneIcon className="w-6 h-6 sm:w-5 sm:h-5" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowVoiceRecorder(true)}
+                  className="text-red-400 hover:text-red-300 transition-colors flex flex-col items-center space-y-1"
+                >
+                  <MicrophoneIcon className="w-5 h-5" />
+                  <span className="text-xs">Voice</span>
+                </button>
 
                 <button
                   type="submit"

@@ -1,15 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PlayIcon, PauseIcon, SpeakerWaveIcon } from '@heroicons/react/24/solid';
+import { PlayIcon, PauseIcon } from '@heroicons/react/24/solid';
 
 const VoicePlayer = ({ audioUrl, isOwn = false }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
   const [error, setError] = useState(null);
+  const [audioContext, setAudioContext] = useState(null);
 
   const audioRef = useRef(null);
   const timerRef = useRef(null);
+
+  // Tính progress percentage
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   // Format thời gian
   const formatTime = (seconds) => {
@@ -18,18 +21,45 @@ const VoicePlayer = ({ audioUrl, isOwn = false }) => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Khởi tạo audio context cho mobile
+  const initAudioContext = async () => {
+    if (!audioContext) {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const context = new AudioContext();
+        setAudioContext(context);
+        
+        // Resume audio context nếu bị suspended
+        if (context.state === 'suspended') {
+          await context.resume();
+        }
+      } catch (error) {
+        console.error('Error initializing audio context:', error);
+      }
+    }
+  };
+
   // Phát/dừng audio
   const togglePlay = async () => {
     if (audioRef.current) {
       try {
+        // Khởi tạo audio context trước khi play
+        await initAudioContext();
+        
         if (isPlaying) {
           audioRef.current.pause();
         } else {
           // Đảm bảo audio context được resume trước khi play
+          if (audioContext && audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
+          
           if (audioRef.current.readyState >= 2) {
             await audioRef.current.play();
           } else {
-            setError('Audio chưa sẵn sàng, vui lòng thử lại');
+            // Nếu audio chưa sẵn sàng, load lại
+            audioRef.current.load();
+            await audioRef.current.play();
           }
         }
       } catch (error) {
@@ -39,18 +69,10 @@ const VoicePlayer = ({ audioUrl, isOwn = false }) => {
     }
   };
 
-  // Thay đổi volume
-  const handleVolumeChange = (e) => {
-    const newVolume = parseFloat(e.target.value);
-    setVolume(newVolume);
-    if (audioRef.current) {
-      audioRef.current.volume = newVolume;
-    }
-  };
-
-  // Thay đổi thời gian phát
-  const handleTimeChange = (e) => {
-    const newTime = parseFloat(e.target.value);
+  // Handle seek
+  const handleSeek = (e) => {
+    const newProgress = parseFloat(e.target.value);
+    const newTime = (newProgress / 100) * duration;
     setCurrentTime(newTime);
     if (audioRef.current) {
       audioRef.current.currentTime = newTime;
@@ -76,87 +98,90 @@ const VoicePlayer = ({ audioUrl, isOwn = false }) => {
   useEffect(() => {
     return () => {
       clearInterval(timerRef.current);
+      if (audioContext) {
+        audioContext.close();
+      }
     };
-  }, []);
+  }, [audioContext]);
 
   return (
-    <div className={`flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-3 p-3 sm:p-4 rounded-lg ${isOwn ? 'bg-blue-500/20' : 'bg-gray-700/50'}`}>
-      {/* Play/Pause Button - Mobile optimized */}
-      <button
-        onClick={togglePlay}
-        className={`p-3 sm:p-2 rounded-full transition-colors shadow-lg ${
-          isOwn 
-            ? 'bg-blue-500 hover:bg-blue-600 text-white' 
-            : 'bg-gray-600 hover:bg-gray-500 text-white'
-        }`}
-        disabled={error}
-      >
-        {isPlaying ? <PauseIcon className="w-5 h-5 sm:w-4 sm:h-4" /> : <PlayIcon className="w-5 h-5 sm:w-4 sm:h-4" />}
-      </button>
+    <div className="bg-gray-800/50 rounded-xl p-2 sm:p-3 w-full max-w-xs sm:max-w-sm md:max-w-md mx-auto">
+      <div className="flex flex-col space-y-2">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+            <span className="text-xs font-medium text-gray-300">Voice Message</span>
+          </div>
+          <span className="text-xs text-gray-400">{formatTime(duration)}</span>
+        </div>
 
-      <div className="flex-1 w-full space-y-2 sm:space-y-1">
-        {/* Progress bar - Mobile optimized */}
+        {/* Audio Controls */}
         <div className="flex items-center space-x-2">
-          <input
-            type="range"
-            min="0"
-            max={duration || 0}
-            value={currentTime}
-            onChange={handleTimeChange}
-            className="flex-1 h-2 sm:h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
-            style={{
-              background: `linear-gradient(to right, ${isOwn ? '#3b82f6' : '#6b7280'} 0%, ${isOwn ? '#3b82f6' : '#6b7280'} ${(currentTime / duration) * 100}%, #374151 ${(currentTime / duration) * 100}%, #374151 100%)`
-            }}
-          />
-          <span className="text-xs text-gray-400 min-w-[40px] text-center">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </span>
+          <button
+            onClick={togglePlay}
+            className="w-8 h-8 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
+          >
+            {isPlaying ? (
+              <PauseIcon className="w-3 h-3 text-white" />
+            ) : (
+              <PlayIcon className="w-3 h-3 text-white ml-0.5" />
+            )}
+          </button>
+
+          {/* Progress Bar */}
+          <div className="flex-1 min-w-0">
+            <div className="relative">
+              <div className="w-full bg-gray-600 rounded-full h-1">
+                <div 
+                  className="bg-red-500 h-1 rounded-full transition-all duration-100"
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={progress}
+                onChange={handleSeek}
+                className="absolute inset-0 w-full opacity-0 cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {/* Time Display */}
+          <div className="text-xs text-gray-400 flex-shrink-0 min-w-0">
+            <span>{formatTime(currentTime)}</span>
+          </div>
         </div>
 
-        {/* Volume control - Hidden on mobile to save space */}
-        <div className="hidden sm:flex items-center space-x-2">
-          <SpeakerWaveIcon className="w-3 h-3 text-gray-400" />
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.1"
-            value={volume}
-            onChange={handleVolumeChange}
-            className="w-16 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
-          />
+        {/* Waveform Visualization */}
+        <div className="flex items-center justify-center space-x-0.5 h-4">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div
+              key={i}
+              className={`w-0.5 rounded-full transition-all duration-200 ${
+                isPlaying && i < Math.floor(progress / 12.5) 
+                  ? 'bg-red-500 h-3' 
+                  : 'bg-gray-500 h-2'
+              }`}
+            ></div>
+          ))}
         </div>
+
+        {/* Error message */}
+        {error && (
+          <div className="text-red-400 text-xs text-center">
+            {error}
+          </div>
+        )}
       </div>
 
-      {/* Waveform visualization - Mobile optimized */}
-      <div className="flex items-center space-x-1">
-        {[...Array(20)].map((_, i) => (
-          <div
-            key={i}
-            className={`w-1 sm:w-0.5 rounded-full transition-all duration-300 ${
-              isPlaying && i < (currentTime / duration) * 20
-                ? isOwn ? 'bg-blue-300' : 'bg-gray-300'
-                : isOwn ? 'bg-blue-500/30' : 'bg-gray-500/30'
-            }`}
-            style={{
-              height: `${Math.random() * 20 + 8}px`
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Error message */}
-      {error && (
-        <div className="text-red-400 text-xs mt-2 text-center">
-          {error}
-        </div>
-      )}
-
-      {/* Hidden audio element with mobile-optimized attributes */}
+      {/* Hidden audio element */}
       <audio
         ref={audioRef}
         src={audioUrl}
-        preload="auto"
+        preload="metadata"
         playsInline
         controls={false}
         onLoadedMetadata={() => setDuration(audioRef.current.duration)}
@@ -172,6 +197,7 @@ const VoicePlayer = ({ audioUrl, isOwn = false }) => {
           setError('Không thể tải audio');
         }}
         onCanPlay={() => setError(null)}
+        onLoadStart={() => setError(null)}
       />
     </div>
   );

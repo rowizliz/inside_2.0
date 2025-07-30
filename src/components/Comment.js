@@ -243,48 +243,64 @@ export default function Comment({ postId, comments, onCommentAdded }) {
     <div className="mt-3">
       {/* Comment Input - Luôn hiển thị */}
       {showVoiceRecorder ? (
-        <VoiceRecorder 
-          onVoiceRecorded={handleVoiceRecorded}
-          onCancel={() => setShowVoiceRecorder(false)}
-        />
+        <div className="flex justify-center">
+          <div className="w-full max-w-sm sm:max-w-md">
+            <VoiceRecorder 
+              onVoiceRecorded={handleVoiceRecorded}
+              onCancel={() => setShowVoiceRecorder(false)}
+            />
+          </div>
+        </div>
       ) : (
         <form onSubmit={handleSubmitComment} className="mb-3">
-          <div className="flex space-x-2 items-center">
-            <label className="cursor-pointer">
-              <CameraIcon className="w-5 h-5 text-gray-400 hover:text-blue-500" />
-              <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowVoiceRecorder(true)}
-              className="p-3 sm:p-2 rounded-full hover:bg-gray-700 transition-colors"
-            >
-              <MicrophoneIcon className="w-5 h-5 text-gray-400 hover:text-red-500" />
-            </button>
-            {mediaPreview && (
-              <div className="relative">
-                {mediaFile && mediaFile.type.startsWith('image/') ? (
-                  <img src={mediaPreview} alt="preview" className="w-10 h-10 object-cover rounded-lg mr-2" />
-                ) : (
-                  <video src={mediaPreview} className="w-10 h-10 rounded-lg mr-2" controls />
-                )}
-                <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className="absolute top-0 right-0 bg-black bg-opacity-60 rounded-full p-1 text-white">&times;</button>
-              </div>
-            )}
-            <input
-              type="text"
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Viết bình luận..."
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-full px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-            />
-            <button
-              type="submit"
-              disabled={!newComment.trim() && !mediaFile}
-              className="bg-blue-500 text-white px-4 py-2 rounded-full text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Gửi
-            </button>
+          <div className="flex justify-center">
+            <div className="flex items-center space-x-2 w-full max-w-sm sm:max-w-md bg-gray-800 rounded-full px-3 py-2">
+              <label className="cursor-pointer flex-shrink-0">
+                <CameraIcon className="w-4 h-4 text-gray-400 hover:text-blue-500" />
+                <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
+              </label>
+              
+              <button
+                type="button"
+                onClick={() => setShowVoiceRecorder(true)}
+                className="p-1 rounded-full hover:bg-gray-700 transition-colors flex-shrink-0"
+              >
+                <MicrophoneIcon className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" />
+              </button>
+              
+              {mediaPreview && (
+                <div className="relative flex-shrink-0">
+                  {mediaFile && mediaFile.type.startsWith('image/') ? (
+                    <img src={mediaPreview} alt="preview" className="w-8 h-8 object-cover rounded-lg" />
+                  ) : (
+                    <video src={mediaPreview} className="w-8 h-8 rounded-lg" controls />
+                  )}
+                  <button 
+                    type="button" 
+                    onClick={() => { setMediaFile(null); setMediaPreview(null); }} 
+                    className="absolute -top-1 -right-1 bg-black bg-opacity-60 rounded-full p-0.5 text-white text-xs"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+              
+              <input
+                type="text"
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Viết bình luận..."
+                className="flex-1 bg-transparent text-white placeholder-gray-400 outline-none text-sm min-w-0"
+              />
+              
+              <button
+                type="submit"
+                disabled={!newComment.trim() && !mediaFile}
+                className="bg-blue-500 text-white px-3 py-1 rounded-full text-xs hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+              >
+                Gửi
+              </button>
+            </div>
           </div>
         </form>
       )}

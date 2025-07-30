@@ -402,25 +402,24 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
           </div>
 
           {/* Text content */}
-          <p className="text-white mb-3 leading-relaxed">{post.content}</p>
+          <p className="text-white mb-3 leading-relaxed text-center sm:text-left px-2">{post.content}</p>
 
           {/* Media */}
           {post.media_url && (
-            <div className="mb-3">
+            <div className="mb-3 flex justify-center">
               {post.media_type?.startsWith('image/') ? (
-                <div>
-                <img 
+                <div className="w-full max-w-sm sm:max-w-md">
+                  <img 
                     src={post.media_url} 
-                  alt="Post media" 
-                    className="rounded-2xl max-w-full max-h-96 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                    alt="Post media" 
+                    className="rounded-2xl w-full h-auto object-cover cursor-pointer hover:opacity-90 transition-opacity"
                     crossOrigin={post.media_url.startsWith('data:') ? undefined : "anonymous"}
                     onClick={handleImageModalOpen}
                     onError={(e) => {
                       console.error('Image failed to load:', post.media_url);
                       e.target.style.display = 'none';
-                      // Show error message
                       const errorDiv = document.createElement('div');
-                      errorDiv.className = 'text-red-500 text-sm mt-2';
+                      errorDiv.className = 'text-red-500 text-sm mt-2 text-center';
                       errorDiv.textContent = 'Không thể tải ảnh. URL: ' + post.media_url;
                       e.target.parentNode.appendChild(errorDiv);
                     }}
@@ -430,23 +429,27 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
                   />
                 </div>
               ) : post.media_type?.startsWith('video/') ? (
-                <video 
-                  src={post.media_url} 
-                  controls 
-                  className="rounded-2xl max-w-full max-h-96"
-                  crossOrigin={post.media_url.startsWith('data:') ? undefined : "anonymous"}
-                  onError={(e) => {
-                    console.error('Video failed to load:', post.media_url);
-                    e.target.style.display = 'none';
-                  }}
-                  onLoad={() => {
-                    console.log('Video loaded successfully:', post.media_url);
-                  }}
-                />
+                <div className="w-full max-w-sm sm:max-w-md">
+                  <video 
+                    src={post.media_url} 
+                    controls 
+                    className="rounded-2xl w-full h-auto"
+                    crossOrigin={post.media_url.startsWith('data:') ? undefined : "anonymous"}
+                    onError={(e) => {
+                      console.error('Video failed to load:', post.media_url);
+                      e.target.style.display = 'none';
+                    }}
+                    onLoad={() => {
+                      console.log('Video loaded successfully:', post.media_url);
+                    }}
+                  />
+                </div>
               ) : post.media_type === 'audio/wav' ? (
-                <VoicePlayer audioUrl={post.media_url} isOwn={false} />
+                <div className="w-full max-w-sm sm:max-w-md">
+                  <VoicePlayer audioUrl={post.media_url} isOwn={false} />
+                </div>
               ) : (
-                <div className="text-gray-400 text-sm">
+                <div className="text-gray-400 text-sm text-center">
                   Media type not supported: {post.media_type}
                 </div>
               )}
@@ -456,37 +459,37 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
           {/* Facebook-style Action Bar */}
           <div className="border-t border-gray-800 pt-3 mt-3">
             {/* Like/Comment/Share Buttons */}
-            <div className="flex justify-between">
-            <button
-              onClick={handleLike}
-                className={`flex-1 flex items-center justify-center space-x-1 md:space-x-2 px-1 md:px-4 py-2 rounded-lg transition-colors ${
+            <div className="flex justify-center space-x-8 sm:space-x-12">
+              <button
+                onClick={handleLike}
+                className={`flex flex-col items-center space-y-1 px-2 py-1 rounded-lg transition-colors ${
                   liked 
                     ? 'text-red-500 bg-red-500/10' 
                     : 'text-gray-400 hover:text-red-500 hover:bg-red-500/10'
                 }`}
-            >
-              {liked ? (
-                  <HeartSolidIcon className="w-4 h-4 md:w-5 md:h-5" />
-              ) : (
-                  <HeartIcon className="w-4 h-4 md:w-5 md:h-5" />
-              )}
-                <span className="text-xs md:text-sm font-medium">Thích</span>
+              >
+                {liked ? (
+                  <HeartSolidIcon className="w-4 h-4" />
+                ) : (
+                  <HeartIcon className="w-4 h-4" />
+                )}
+                <span className="text-xs font-medium">Thích</span>
               </button>
 
-              <button className="flex-1 flex items-center justify-center space-x-1 md:space-x-2 px-1 md:px-4 py-2 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-500/10 transition-colors">
-                <ChatBubbleLeftIcon className="w-4 h-4 md:w-5 md:h-5" />
-                <span className="text-xs md:text-sm font-medium">Bình luận</span>
-            </button>
+              <button className="flex flex-col items-center space-y-1 px-2 py-1 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-500/10 transition-colors">
+                <ChatBubbleLeftIcon className="w-4 h-4" />
+                <span className="text-xs font-medium">Bình luận</span>
+              </button>
 
-              <button className="flex-1 flex items-center justify-center space-x-1 md:space-x-2 px-1 md:px-4 py-2 rounded-lg text-gray-400 hover:text-green-500 hover:bg-green-500/10 transition-colors">
-                <ArrowUpTrayIcon className="w-4 h-4 md:w-5 md:h-5" />
-                <span className="text-xs md:text-sm font-medium">Chia sẻ</span>
+              <button className="flex flex-col items-center space-y-1 px-2 py-1 rounded-lg text-gray-400 hover:text-green-500 hover:bg-green-500/10 transition-colors">
+                <ArrowUpTrayIcon className="w-4 h-4" />
+                <span className="text-xs font-medium">Chia sẻ</span>
               </button>
             </div>
 
             {/* Like Count */}
             {likes > 0 && (
-              <div className="flex items-center space-x-1 mt-2 text-sm text-gray-400">
+              <div className="flex items-center justify-center space-x-1 mt-2 text-sm text-gray-400">
                 <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
                   <HeartSolidIcon className="w-2 h-2 text-white" />
                 </div>
@@ -496,7 +499,7 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
 
             {/* Comments Count */}
             {comments.length > 0 && (
-              <div className="mt-2 text-sm text-gray-400">
+              <div className="mt-2 text-sm text-gray-400 text-center">
                 {comments.length} bình luận
               </div>
             )}

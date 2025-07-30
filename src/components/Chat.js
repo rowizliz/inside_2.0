@@ -44,6 +44,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   const [seenStatus, setSeenStatus] = useState({});
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
+  const [modalMedia, setModalMedia] = useState(null);
 
   // --- STATE PHÂN TRANG ---
   const [messageLimit, setMessageLimit] = useState(30);
@@ -1581,10 +1582,20 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                     <div className="flex flex-col max-w-[70%]">
                       {/* Hiển thị media nếu có */}
                       {msg.media_url && msg.media_type && msg.media_type.startsWith('image/') && (
-                        <img src={msg.media_url} alt="media" className="rounded-xl mb-2 max-w-xs max-h-60 object-contain" />
+                        <img
+                          src={msg.media_url}
+                          alt="media"
+                          className="rounded-xl mb-2 max-w-xs max-h-60 object-contain cursor-pointer"
+                          onClick={() => setModalMedia({ url: msg.media_url, type: msg.media_type })}
+                        />
                       )}
                       {msg.media_url && msg.media_type && msg.media_type.startsWith('video/') && (
-                        <video src={msg.media_url} controls className="rounded-xl mb-2 max-w-xs max-h-60" />
+                        <video
+                          src={msg.media_url}
+                          controls
+                          className="rounded-xl mb-2 max-w-xs max-h-60 cursor-pointer"
+                          onClick={() => setModalMedia({ url: msg.media_url, type: msg.media_type })}
+                        />
                       )}
                       <div className={`px-4 py-2 rounded-2xl shadow ${isOwn ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white'} text-sm break-words message-bubble`}>{msg.content}</div>
                               <div className={`text-xs text-gray-500 mt-1 ${isOwn ? 'text-right' : 'text-left'}`}>{new Date(msg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
@@ -1803,6 +1814,21 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                 Hủy
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {modalMedia && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80" onClick={() => setModalMedia(null)}>
+          <div className="relative max-w-full max-h-full" onClick={e => e.stopPropagation()}>
+            {modalMedia.type.startsWith('image/') ? (
+              <img src={modalMedia.url} alt="media" className="max-w-[90vw] max-h-[90vh] object-contain" />
+            ) : (
+              <video src={modalMedia.url} controls className="max-w-[90vw] max-h-[90vh]" />
+            )}
+            <button
+              className="absolute top-2 right-2 bg-black bg-opacity-60 text-white rounded-full p-2 text-xl"
+              onClick={() => setModalMedia(null)}
+            >×</button>
           </div>
         </div>
       )}

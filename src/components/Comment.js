@@ -11,6 +11,7 @@ export default function Comment({ postId, comments, onCommentAdded }) {
   const [avatars, setAvatars] = useState({});
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
+  const [modalMedia, setModalMedia] = useState(null);
 
   useEffect(() => {
     async function fetchAvatars() {
@@ -247,16 +248,29 @@ export default function Comment({ postId, comments, onCommentAdded }) {
                         </button>
                       )}
                     </div>
+                    {/* Hiển thị text trên ảnh nếu có */}
+                    {comment.content && (
+                      <div className="text-sm text-gray-300 text-left mb-2">
+                        {comment.content}
+                      </div>
+                    )}
                     {/* Hiển thị media nếu có */}
                     {comment.media_url && comment.media_type && comment.media_type.startsWith('image/') && (
-                      <img src={comment.media_url} alt="media" className="rounded-xl mb-2 max-w-xs max-h-60 object-contain" />
+                      <img
+                        src={comment.media_url}
+                        alt="media"
+                        className="rounded-xl mb-2 max-w-xs max-h-60 object-contain cursor-pointer"
+                        onClick={() => setModalMedia({ url: comment.media_url, type: comment.media_type })}
+                      />
                     )}
                     {comment.media_url && comment.media_type && comment.media_type.startsWith('video/') && (
-                      <video src={comment.media_url} controls className="rounded-xl mb-2 max-w-xs max-h-60" />
+                      <video
+                        src={comment.media_url}
+                        controls
+                        className="rounded-xl mb-2 max-w-xs max-h-60 cursor-pointer"
+                        onClick={() => setModalMedia({ url: comment.media_url, type: comment.media_type })}
+                      />
                     )}
-                    <div className="text-sm text-gray-300 text-left">
-                      {comment.content}
-                    </div>
                     <div className="flex items-center space-x-4 mt-2 text-xs">
                       <span className="text-gray-500">
                         {formatTimeAgo(comment.created_at)}
@@ -280,6 +294,21 @@ export default function Comment({ postId, comments, onCommentAdded }) {
               </div>
             );
           })}
+        </div>
+      )}
+      {modalMedia && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80" onClick={() => setModalMedia(null)}>
+          <div className="relative max-w-full max-h-full" onClick={e => e.stopPropagation()}>
+            {modalMedia.type.startsWith('image/') ? (
+              <img src={modalMedia.url} alt="media" className="max-w-[90vw] max-h-[90vh] object-contain" />
+            ) : (
+              <video src={modalMedia.url} controls className="max-w-[90vw] max-h-[90vh]" />
+            )}
+            <button
+              className="absolute top-2 right-2 bg-black bg-opacity-60 text-white rounded-full p-2 text-xl"
+              onClick={() => setModalMedia(null)}
+            >×</button>
+          </div>
         </div>
       )}
     </div>

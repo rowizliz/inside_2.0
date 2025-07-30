@@ -202,34 +202,6 @@ export default function CreatePost({ onPostCreated }) {
     }
   };
 
-      const { error: insertError } = await supabase
-        .from('posts')
-        .insert(postData);
-
-      if (insertError) {
-        console.error('Insert error details:', insertError);
-        throw new Error(`Post creation failed: ${insertError.message}`);
-      }
-
-      console.log('Post created successfully');
-
-      setContent('');
-      setMediaFile(null);
-      setMediaPreview(null);
-      
-      // Add small delay to ensure database is updated
-      setTimeout(() => {
-        if (onPostCreated) {
-          onPostCreated();
-        }
-      }, 500);
-    } catch (error) {
-      console.error('Error creating post:', error);
-      alert(`Lỗi: ${error.message}`);
-    }
-    setLoading(false);
-  };
-
   return (
     <div className="border-b border-gray-800 p-4">
       {showVoiceRecorder ? (

@@ -8,12 +8,18 @@ import {
   CameraIcon,
   MicrophoneIcon,
   TrashIcon,
-  ArrowLeftIcon
+  ArrowLeftIcon,
+  PhoneIcon,
+  VideoCameraIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import supabase from '../supabase';
 import VoiceRecorder from './VoiceRecorder';
 import VoicePlayer from './VoicePlayer';
+import VideoCall from './VideoCall';
+import CallHistory from './CallHistory';
+import { generateFilename, getFileExtension } from '../utils/fileUtils';
 
 export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts }) {
   const [channels, setChannels] = useState([]);
@@ -53,6 +59,10 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   const [heartSize, setHeartSize] = useState(1);
   const [isHeartPressed, setIsHeartPressed] = useState(false);
   const [heartInterval, setHeartInterval] = useState(null);
+  const [isStabilizing, setIsStabilizing] = useState(false);
+  const [showVideoCall, setShowVideoCall] = useState(false);
+  const [targetUserForCall, setTargetUserForCall] = useState(null);
+  const [showCallHistory, setShowCallHistory] = useState(false);
 
   // --- STATE PHÂN TRANG ---
   const [messageLimit, setMessageLimit] = useState(30);
@@ -675,9 +685,10 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     let media_type = null;
     try {
       if (mediaFile) {
-        // Upload file lên Supabase Storage
-        const ext = mediaFile.name.split('.').pop();
-        const filePath = `chat-media/${currentUser.id}_${Date.now()}.${ext}`;
+        // Upload file lên Supabase Storage với format tên mới
+        const fileExtension = getFileExtension(mediaFile.name, mediaFile.type);
+        const fileName = generateFilename(currentUser.display_name, fileExtension);
+        const filePath = `chat-media/${fileName}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('chat-media')
           .upload(filePath, mediaFile, { upsert: true });
@@ -775,6 +786,75 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     setHeartSize(1);
   };
 
+  // Xóa tin nhắn
+  const handleDeleteMessage = async (messageId, mediaUrl, mediaType) => {
+    if (!currentUser || !currentChannel) return;
+
+    try {
+      // Delete media file from storage if exists
+      if (mediaUrl && !mediaUrl.startsWith('data:')) {
+        try {
+          // Extract filename from Supabase Storage URL
+          let fileName;
+          let bucketName = 'chat-media';
+          
+          if (mediaType === 'audio/wav') {
+            bucketName = 'voice-messages';
+            if (mediaUrl.includes('/storage/v1/object/public/voice-messages/')) {
+              fileName = mediaUrl.split('/storage/v1/object/public/voice-messages/')[1];
+            } else if (mediaUrl.includes('/storage/v1/object/sign/voice-messages/')) {
+              fileName = mediaUrl.split('/storage/v1/object/sign/voice-messages/')[1];
+            }
+          } else {
+            if (mediaUrl.includes('/storage/v1/object/public/chat-media/')) {
+              fileName = mediaUrl.split('/storage/v1/object/public/chat-media/')[1];
+            } else if (mediaUrl.includes('/storage/v1/object/sign/chat-media/')) {
+              fileName = mediaUrl.split('/storage/v1/object/sign/chat-media/')[1];
+            }
+          }
+          
+          // Remove query parameters if any
+          if (fileName) {
+            fileName = fileName.split('?')[0];
+            fileName = decodeURIComponent(fileName);
+            
+            console.log('Deleting message media file:', fileName);
+            console.log('Bucket:', bucketName);
+            console.log('Original URL:', mediaUrl);
+            
+            const { error: deleteFileError } = await supabase.storage
+              .from(bucketName)
+              .remove([fileName]);
+            
+            if (deleteFileError) {
+              console.error('Error deleting message media file:', deleteFileError);
+            } else {
+              console.log('Message media file deleted successfully:', fileName);
+            }
+          }
+        } catch (fileError) {
+          console.error('Error deleting message file:', fileError);
+        }
+      }
+
+      // Delete the message
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .eq('id', messageId)
+        .eq('author_uid', currentUser.id); // Chỉ author mới được delete
+
+      if (error) {
+        console.error('Error deleting message:', error);
+        return;
+      }
+
+      console.log('Message deleted successfully');
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
   // Gửi tin nhắn trái tim
   const sendHeartMessage = async (size) => {
     if (!currentChannel) return;
@@ -814,14 +894,15 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     if (!currentUser || !currentChannel) return;
 
     try {
-      // Tạo file từ blob
-      const fileName = `voice-messages/${currentUser.id}_${Date.now()}.wav`;
+      // Tạo file từ blob với format tên mới
+      const fileName = generateFilename(currentUser.display_name, '.wav');
+      const filePath = `voice-messages/${fileName}`;
       const file = new File([audioBlob], fileName, { type: 'audio/wav' });
 
       // Upload lên Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('voice-messages')
-        .upload(fileName, file, { upsert: true });
+        .upload(filePath, file, { upsert: true });
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
@@ -833,7 +914,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
       const expireSeconds = 10000 * 365 * 24 * 60 * 60; // 10.000 năm
       const { data: signedUrlData, error: signedError } = await supabase.storage
         .from('voice-messages')
-        .createSignedUrl(fileName, expireSeconds);
+        .createSignedUrl(filePath, expireSeconds);
 
       if (signedError || !signedUrlData?.signedUrl) {
         console.error('Signed URL error:', signedError);
@@ -1017,12 +1098,14 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     };
   }, [currentChannel?.id, currentUser?.id]);
 
-  // Initial load
+  // Initial load - chỉ chạy một lần khi user thay đổi
   useEffect(() => {
-    fetchChannels();
-    fetchUsers();
-    fetchLatestMessages();
-  }, [currentUser]);
+    if (currentUser?.id) {
+      fetchChannels();
+      fetchUsers();
+      fetchLatestMessages();
+    }
+  }, [currentUser?.id]); // Chỉ depend on user ID, không phải toàn bộ user object
 
   // Cleanup heart interval on unmount
   useEffect(() => {
@@ -1046,12 +1129,15 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     }
   }, [loading]);
 
-  // Update channel user infos khi channels thay đổi
+  // Update channel user infos khi channels thay đổi - với debounce
   useEffect(() => {
     if (channels.length > 0) {
-      updateAllChannelUserInfos();
+      const timer = setTimeout(() => {
+        updateAllChannelUserInfos();
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [channels]);
+  }, [channels.length]); // Chỉ depend on channels length, không phải toàn bộ channels array
 
   // Đặt ref cho container scroll
   const messagesContainerRef = useRef(null);
@@ -1500,10 +1586,14 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
 
   // Khi user mở kênh chat, đánh dấu tất cả message_reads của user đó trong kênh thành 'seen'
   const handleChannelClick = async (channel) => {
+    // Prevent multiple rapid clicks
+    if (currentChannel?.id === channel.id) return;
+    
     setCurrentChannel(channel);
     setShowChatDetail(true); // Hiển thị chat detail
     await updateCurrentUserInfo(channel);
     if (window.innerWidth < 768) setShowMobileChat(true);
+    
     // Lấy tất cả message_id trong kênh
     const { data: msgIds } = await supabase
       .from('messages')
@@ -1557,6 +1647,26 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     fetchSeenStatus();
   }, [currentChannel, messages]);
 
+  // Stabilize chat when currentUser changes (e.g., after avatar refresh) - với debounce
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    
+    setIsStabilizing(true);
+    const timer = setTimeout(async () => {
+      // Only refetch if we have a current channel and it's been stable
+      if (currentChannel && !loading) {
+        console.log('🔄 Chat: Stabilizing after user change, refetching messages...');
+        await fetchMessages(currentChannel.id, 30, 0, false);
+      }
+      setIsStabilizing(false);
+    }, 1000); // 1 giây debounce
+    
+    return () => {
+      clearTimeout(timer);
+      setIsStabilizing(false);
+    };
+  }, [currentUser?.id]); // Only depend on user ID, not the entire user object
+
   // Trước khi render danh sách messages
   console.log('Messages state before render:', messages);
 
@@ -1570,21 +1680,25 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     }
   };
 
-  if (loading) {
+  if (loading || isStabilizing) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-white text-lg mb-2">Đang tải chat...</div>
+          <div className="text-white text-lg mb-2">
+            {isStabilizing ? 'Đang đồng bộ...' : 'Đang tải chat...'}
+          </div>
           <div className="text-gray-400 text-sm mb-4">Vui lòng chờ trong giây lát</div>
-          <button
-            onClick={() => {
-              setLoading(false);
-              setError('Đã timeout, vui lòng thử lại');
-            }}
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-          >
-            Bỏ qua loading
-          </button>
+          {!isStabilizing && (
+            <button
+              onClick={() => {
+                setLoading(false);
+                setError('Đã timeout, vui lòng thử lại');
+              }}
+              className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+            >
+              Bỏ qua loading
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1730,14 +1844,33 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
             >
               <ChatBubbleLeftRightIcon className="w-5 h-5 text-white" />
             </button>
-            {/* Nút toggle âm thanh */}
-            <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              className={`p-2 rounded-full transition-colors ${soundEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
-              title={soundEnabled ? 'Tắt âm thanh' : 'Bật âm thanh'}
-            >
-              {soundEnabled ? '🔊' : '🔇'}
-            </button>
+            {/* Nút video call - chỉ hiển thị cho direct chat */}
+            {currentChannel.type === 'direct' && (
+              <button
+                onClick={() => {
+                  setTargetUserForCall(currentUserInfo);
+                  setShowVideoCall(true);
+                }}
+                className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-2"
+                title="Video call"
+              >
+                <VideoCameraIcon className="w-5 h-5 text-white" />
+              </button>
+            )}
+            
+            {/* Nút audio call - chỉ hiển thị cho direct chat */}
+            {currentChannel.type === 'direct' && (
+              <button
+                onClick={() => {
+                  setTargetUserForCall(currentUserInfo);
+                  setShowVideoCall(true);
+                }}
+                className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-2"
+                title="Audio call"
+              >
+                <PhoneIcon className="w-5 h-5 text-white" />
+              </button>
+            )}
                   </div>
           
                   {/* Messages */}
@@ -1770,9 +1903,37 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                       )}
                       {/* Hiển thị tin nhắn thoại */}
                       {msg.media_url && msg.media_type && msg.media_type === 'audio/wav' ? (
-                        <VoicePlayer audioUrl={msg.media_url} isOwn={isOwn} />
+                        <div className="relative group">
+                          <VoicePlayer audioUrl={msg.media_url} isOwn={isOwn} />
+                          {/* Nút xóa tin nhắn thoại (chỉ hiển thị cho tin nhắn của mình) */}
+                          {isOwn && (
+                            <button
+                              onClick={() => handleDeleteMessage(msg.id, msg.media_url, msg.media_type)}
+                              className="absolute top-0 right-0 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                              title="Xóa tin nhắn"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                       ) : (
-                        <div className={`px-4 py-2 rounded-2xl shadow ${isOwn ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white'} text-sm break-words message-bubble`}>{msg.content}</div>
+                        <div className={`px-4 py-2 rounded-2xl shadow ${isOwn ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white'} text-sm break-words message-bubble relative group`}>
+                          {msg.content}
+                          {/* Nút xóa tin nhắn (chỉ hiển thị cho tin nhắn của mình) */}
+                          {isOwn && (
+                            <button
+                              onClick={() => handleDeleteMessage(msg.id, msg.media_url, msg.media_type)}
+                              className="absolute -top-1 -right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Xóa tin nhắn"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                       )}
                               <div className={`text-xs text-gray-500 mt-1 ${isOwn ? 'text-right' : 'text-left'}`}>{new Date(msg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
                             </div>
@@ -2106,6 +2267,27 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
             >×</button>
           </div>
         </div>
+      )}
+      
+      {/* Video Call Component */}
+      {showVideoCall && targetUserForCall && (
+        <VideoCall
+          isOpen={showVideoCall}
+          onClose={() => {
+            setShowVideoCall(false);
+            setTargetUserForCall(null);
+          }}
+          targetUser={targetUserForCall}
+          currentUser={currentUser}
+        />
+      )}
+
+      {/* Call History Component */}
+      {showCallHistory && (
+        <CallHistory
+          isOpen={showCallHistory}
+          onClose={() => setShowCallHistory(false)}
+        />
       )}
     </>
   );

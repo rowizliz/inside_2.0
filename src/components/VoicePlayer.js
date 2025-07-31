@@ -1,21 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PlayIcon, PauseIcon } from '@heroicons/react/24/solid';
+import { resumeAudioContext } from '../utils/audioContext';
 
 const VoicePlayer = ({ audioUrl, isOwn = false }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState(null);
-  const [audioContext, setAudioContext] = useState(null);
+
 
   const audioRef = useRef(null);
   const timerRef = useRef(null);
 
   // Tính progress percentage
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progress = (duration > 0 && isFinite(duration) && isFinite(currentTime)) ? (currentTime / duration) * 100 : 0;
 
   // Format thời gian
   const formatTime = (seconds) => {
+    if (!isFinite(seconds) || isNaN(seconds) || seconds < 0) {
+      return '0:00';
+    }
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -23,19 +27,10 @@ const VoicePlayer = ({ audioUrl, isOwn = false }) => {
 
   // Khởi tạo audio context cho mobile
   const initAudioContext = async () => {
-    if (!audioContext) {
-      try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        const context = new AudioContext();
-        setAudioContext(context);
-        
-        // Resume audio context nếu bị suspended
-        if (context.state === 'suspended') {
-          await context.resume();
-        }
-      } catch (error) {
-        console.error('Error initializing audio context:', error);
-      }
+    try {
+      await resumeAudioContext();
+    } catch (error) {
+      console.error('Error initializing audio context:', error);
     }
   };
 
@@ -49,10 +44,8 @@ const VoicePlayer = ({ audioUrl, isOwn = false }) => {
         if (isPlaying) {
           audioRef.current.pause();
         } else {
-          // Đảm bảo audio context được resume trước khi play
-          if (audioContext && audioContext.state === 'suspended') {
-            await audioContext.resume();
-          }
+                  // Đảm bảo audio context được resume trước khi play
+        await resumeAudioContext();
           
           if (audioRef.current.readyState >= 2) {
             await audioRef.current.play();
@@ -98,11 +91,9 @@ const VoicePlayer = ({ audioUrl, isOwn = false }) => {
   useEffect(() => {
     return () => {
       clearInterval(timerRef.current);
-      if (audioContext) {
-        audioContext.close();
-      }
+      // Không đóng audioContext ở đây
     };
-  }, [audioContext]);
+  }, []);
 
   return (
     <div className="bg-gray-800/50 rounded-xl p-2 sm:p-3 w-full max-w-xs sm:max-w-sm md:max-w-md mx-auto">
@@ -184,14 +175,26 @@ const VoicePlayer = ({ audioUrl, isOwn = false }) => {
         preload="metadata"
         playsInline
         controls={false}
-        onLoadedMetadata={() => setDuration(audioRef.current.duration)}
+        onLoadedMetadata={() => {
+          const duration = audioRef.current.duration;
+          if (isFinite(duration) && !isNaN(duration) && duration > 0) {
+            setDuration(duration);
+          } else {
+            setDuration(0);
+          }
+        }}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
           setIsPlaying(false);
           setCurrentTime(0);
         }}
-        onTimeUpdate={() => setCurrentTime(audioRef.current.currentTime)}
+        onTimeUpdate={() => {
+          const currentTime = audioRef.current.currentTime;
+          if (isFinite(currentTime) && !isNaN(currentTime)) {
+            setCurrentTime(currentTime);
+          }
+        }}
         onError={(e) => {
           console.error('Audio error:', e);
           setError('Không thể tải audio');

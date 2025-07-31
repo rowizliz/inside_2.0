@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MicrophoneIcon, StopIcon, PlayIcon, PauseIcon, PaperAirplaneIcon } from '@heroicons/react/24/solid';
+import { generateFilename } from '../utils/fileUtils';
+import { resumeAudioContext } from '../utils/audioContext';
 
 const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -10,7 +12,7 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
   const [playbackTime, setPlaybackTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState(null);
-  const [audioContext, setAudioContext] = useState(null);
+
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -20,19 +22,10 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
 
   // Khởi tạo audio context cho mobile
   const initAudioContext = async () => {
-    if (!audioContext) {
-      try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        const context = new AudioContext();
-        setAudioContext(context);
-        
-        // Resume audio context nếu bị suspended
-        if (context.state === 'suspended') {
-          await context.resume();
-        }
-      } catch (error) {
-        console.error('Error initializing audio context:', error);
-      }
+    try {
+      await resumeAudioContext();
+    } catch (error) {
+      console.error('Error initializing audio context:', error);
     }
   };
 
@@ -105,9 +98,7 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
           clearInterval(playbackTimerRef.current);
         } else {
           // Đảm bảo audio context được resume trước khi play
-          if (audioContext && audioContext.state === 'suspended') {
-            await audioContext.resume();
-          }
+          await resumeAudioContext();
           
           if (audioRef.current.readyState >= 2) {
             await audioRef.current.play();
@@ -182,11 +173,9 @@ const VoiceRecorder = ({ onVoiceRecorded, onCancel }) => {
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
       if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
       if (audioUrl) URL.revokeObjectURL(audioUrl);
-      if (audioContext) {
-        audioContext.close();
-      }
+      // Không đóng audioContext ở đây vì có thể được dùng lại
     };
-  }, [audioUrl, audioContext]);
+  }, [audioUrl]);
 
   return (
     <div className="bg-gray-800/50 rounded-xl p-3 w-full max-w-xs sm:max-w-sm md:max-w-md mx-auto">

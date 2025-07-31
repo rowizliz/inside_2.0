@@ -27,7 +27,7 @@ export default function Home() {
     return savedProfileUserId || null;
   });
   const [unreadCounts, setUnreadCounts] = useState({});
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, refreshUserAvatar } = useAuth();
 
   // Hàm phát âm thanh đơn giản cho Home.js
   const playNotificationSound = () => {
@@ -82,6 +82,8 @@ export default function Home() {
     }
   };
 
+
+
   // Hàm fetch số message chưa đọc cho user
   async function fetchUnreadCounts() {
     if (!currentUser) return;
@@ -101,7 +103,10 @@ export default function Home() {
   }
 
   // Gọi khi đăng nhập thành công hoặc chuyển tab
-  useEffect(() => { fetchUnreadCounts(); }, [currentUser]);
+  useEffect(() => { 
+    fetchUnreadCounts(); 
+    refreshUserAvatar();
+  }, [currentUser]);
 
   // Test subscription để xác nhận realtime hoạt động
   useEffect(() => {
@@ -234,6 +239,9 @@ export default function Home() {
     } catch (error) {
       console.error('Error fetching latest post:', error);
     }
+
+    // Refresh avatar
+    await refreshUserAvatar();
   };
 
   const handleOpenProfile = (userId = currentUser.id) => {
@@ -363,7 +371,7 @@ export default function Home() {
         <>
           {activeView === 'feed' && (
             <div className="max-w-2xl mx-auto">
-              <CreatePost onPostCreated={handlePostCreated} />
+              <CreatePost onPostCreated={handlePostCreated} avatarUrl={currentUser?.avatar_url} />
               {/* Posts Feed */}
               <div className="divide-y divide-gray-800">
                 {posts.length === 0 ? (

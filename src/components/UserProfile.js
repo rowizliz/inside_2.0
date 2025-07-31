@@ -47,7 +47,7 @@ export default function UserProfile({ userId, onBack }) {
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
-  const { currentUser, updateCurrentUserProfile } = useAuth();
+  const { currentUser, updateCurrentUserProfile, forceRefreshAvatar } = useAuth();
 
   const isOwnProfile = currentUser && currentUser.id === userId;
 
@@ -203,6 +203,9 @@ export default function UserProfile({ userId, onBack }) {
         });
       }
 
+      // Refresh avatar globally
+      await forceRefreshAvatar();
+
       setIsEditing(false);
       setAvatar(null);
       setAvatarPreview(null);
@@ -236,7 +239,10 @@ export default function UserProfile({ userId, onBack }) {
       {/* Profile Content */}
       <div className="max-w-2xl mx-auto px-4 py-6">
         {/* Profile Header */}
-        <div className="bg-gray-900 rounded-2xl p-6 mb-6">
+        <div 
+          className={`bg-gray-900 rounded-2xl p-6 mb-6 ${isOwnProfile ? 'cursor-pointer hover:bg-gray-800 transition-colors' : ''}`}
+          onClick={isOwnProfile && !isEditing ? () => setIsEditing(true) : undefined}
+        >
           <div className="flex items-start space-x-4">
             {/* Avatar */}
             <div className="relative">
@@ -292,37 +298,25 @@ export default function UserProfile({ userId, onBack }) {
                 </p>
               )}
 
-              {isOwnProfile && (
-                <div className="flex space-x-2">
-                  {isEditing ? (
-                    <>
-                      <button
-                        onClick={handleSaveProfile}
-                        className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
-                      >
-                        Lưu
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsEditing(false);
-                          setBio(user.bio || '');
-                          setAvatar(null);
-                          setAvatarPreview(null);
-                        }}
-                        className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-                      >
-                        Hủy
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className="bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors flex items-center space-x-2"
-                    >
-                      <PencilIcon className="w-4 h-4" />
-                      <span>Chỉnh sửa</span>
-                    </button>
-                  )}
+              {isOwnProfile && isEditing && (
+                <div className="flex space-x-2 mt-4">
+                  <button
+                    onClick={handleSaveProfile}
+                    className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    Lưu
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditing(false);
+                      setBio(user.bio || '');
+                      setAvatar(null);
+                      setAvatarPreview(null);
+                    }}
+                    className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    Hủy
+                  </button>
                 </div>
               )}
             </div>
@@ -331,19 +325,9 @@ export default function UserProfile({ userId, onBack }) {
 
         {/* Stats */}
         <div className="bg-gray-900 rounded-2xl p-6 mb-6">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <div className="text-2xl font-bold text-white">{posts.length}</div>
-              <div className="text-gray-400 text-sm">Bài viết</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">0</div>
-              <div className="text-gray-400 text-sm">Người theo dõi</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">0</div>
-              <div className="text-gray-400 text-sm">Đang theo dõi</div>
-            </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-white">{posts.length}</div>
+            <div className="text-gray-400 text-sm">Bài viết</div>
           </div>
         </div>
 

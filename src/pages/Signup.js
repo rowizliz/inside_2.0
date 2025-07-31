@@ -13,7 +13,7 @@ export default function Signup() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const { signup, forceRefreshAvatar } = useAuth();
+  const { signup } = useAuth();
   const navigate = useNavigate();
 
   // Resize/crop ảnh về 250x250 JPEG
@@ -77,10 +77,6 @@ export default function Signup() {
       if (urlError) throw urlError;
       const avatarUrl = urlData.signedUrl;
       await signup(email, password, displayName, avatarUrl);
-      
-      // Refresh avatar globally after signup
-              await forceRefreshAvatar();
-      
       setShowSuccessModal(true);
     } catch (error) {
       let errorMessage = 'Đăng ký thất bại. Vui lòng thử lại.';

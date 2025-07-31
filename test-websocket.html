@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Signaling Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .log { background: #f5f5f5; padding: 10px; height: 300px; overflow-y: scroll; border: 1px solid #ddd; }
+        .controls { margin: 20px 0; }
+        button { padding: 10px 20px; margin: 5px; }
+        input { padding: 8px; margin: 5px; width: 200px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebSocket Signaling Test</h1>
+        
+        <div class="controls">
+            <input type="text" id="serverUrl" placeholder="WebSocket URL" value="wss://your-app-name.cyclic.app">
+            <input type="text" id="userId" placeholder="User ID" value="user1">
+            <button onclick="connect()">Connect</button>
+            <button onclick="disconnect()">Disconnect</button>
+        </div>
+        
+        <div class="controls">
+            <input type="text" id="targetUser" placeholder="Target User ID" value="user2">
+            <button onclick="sendOffer()">Send Offer</button>
+            <button onclick="sendAnswer()">Send Answer</button>
+            <button onclick="sendIceCandidate()">Send ICE Candidate</button>
+        </div>
+        
+        <h3>Log:</h3>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${time}] ${message}<br>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function connect() {
+            const url = document.getElementById('serverUrl').value;
+            const userId = document.getElementById('userId').value;
+            
+            if (!url || !userId) {
+                alert('Please enter server URL and user ID');
+                return;
+            }
+            
+            log(`Connecting to ${url}...`);
+            ws = new WebSocket(url);
+            
+            ws.onopen = function() {
+                log('WebSocket connected');
+                log(`Registering user: ${userId}`);
+                ws.send(JSON.stringify({ type: 'register', userId: userId }));
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                log(`Received: ${JSON.stringify(data)}`);
+            };
+            
+            ws.onerror = function(error) {
+                log(`WebSocket error: ${error}`);
+            };
+            
+            ws.onclose = function() {
+                log('WebSocket disconnected');
+            };
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+        
+        function sendOffer() {
+            if (!ws) {
+                alert('Please connect first');
+                return;
+            }
+            
+            const targetUser = document.getElementById('targetUser').value;
+            const offer = { type: 'offer', sdp: 'test-offer-sdp' };
+            
+            ws.send(JSON.stringify({
+                type: 'offer',
+                offer: offer,
+                to: targetUser
+            }));
+            
+            log(`Sent offer to ${targetUser}`);
+        }
+        
+        function sendAnswer() {
+            if (!ws) {
+                alert('Please connect first');
+                return;
+            }
+            
+            const targetUser = document.getElementById('targetUser').value;
+            const answer = { type: 'answer', sdp: 'test-answer-sdp' };
+            
+            ws.send(JSON.stringify({
+                type: 'answer',
+                answer: answer,
+                to: targetUser
+            }));
+            
+            log(`Sent answer to ${targetUser}`);
+        }
+        
+        function sendIceCandidate() {
+            if (!ws) {
+                alert('Please connect first');
+                return;
+            }
+            
+            const targetUser = document.getElementById('targetUser').value;
+            const candidate = { candidate: 'test-ice-candidate', sdpMLineIndex: 0, sdpMid: 'audio' };
+            
+            ws.send(JSON.stringify({
+                type: 'ice-candidate',
+                candidate: candidate,
+                to: targetUser
+            }));
+            
+            log(`Sent ICE candidate to ${targetUser}`);
+        }
+    </script>
+</body>
+</html> 

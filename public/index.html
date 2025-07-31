@@ -25,6 +25,25 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>[Mạng xã hội cho người hướng nội]</title>
+    <script>
+      // Polyfill for simple-peer
+      window.process = {
+        env: {
+          NODE_ENV: 'development'
+        },
+        nextTick: function(callback) {
+          setTimeout(callback, 0);
+        }
+      };
+      
+      // Polyfill for Buffer if needed (using global)
+      if (typeof window.Buffer === 'undefined') {
+        window.Buffer = globalThis.Buffer || (() => {
+          console.warn('Buffer not available, using fallback');
+          return Uint8Array;
+        })();
+      }
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

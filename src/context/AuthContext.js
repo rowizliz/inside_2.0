@@ -65,9 +65,6 @@ export function AuthProvider({ children }) {
   async function logout() {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-    
-    // Clear avatar cache khi logout
-    avatarCache.clear();
   }
 
   const fetchUserProfile = async (user) => {
@@ -177,76 +174,7 @@ export function AuthProvider({ children }) {
     }));
   };
 
-  // Hàm refresh avatar từ database (dùng để đồng bộ avatar toàn cục)
-  // Cache để tránh fetch lại data đã có
-  const avatarCache = new Map();
-  
-  const refreshUserAvatar = async (force = false) => {
-    if (!currentUser?.id) return;
-    
-    // Kiểm tra cache trước
-    const cacheKey = `avatar_${currentUser.id}`;
-    const cachedData = avatarCache.get(cacheKey);
-    const now = Date.now();
-    
-    // Nếu có cache và chưa quá 30 giây, dùng cache
-    if (!force && cachedData && (now - cachedData.timestamp) < 30000) {
-      console.log('✅ Using cached avatar data');
-      setCurrentUser((prev) => ({
-        ...prev,
-        avatar_url: cachedData.data.avatar_url,
-        displayName: cachedData.data.display_name || prev.displayName,
-        bio: cachedData.data.bio || prev.bio
-      }));
-      return;
-    }
-    
-    // Debounce ngắn hơn cho UX tốt hơn
-    if (refreshUserAvatar.debounceTimer) {
-      clearTimeout(refreshUserAvatar.debounceTimer);
-    }
-    
-    refreshUserAvatar.debounceTimer = setTimeout(async () => {
-      try {
-        console.log('🔄 Fetching fresh avatar data...');
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('avatar_url, display_name, bio')
-          .eq('id', currentUser.id)
-          .single();
-        
-        if (!error && data) {
-          // Cache data mới
-          avatarCache.set(cacheKey, {
-            data,
-            timestamp: now
-          });
-          
-          setCurrentUser((prev) => ({
-            ...prev,
-            avatar_url: data.avatar_url,
-            displayName: data.display_name || prev.displayName,
-            bio: data.bio || prev.bio
-          }));
-          console.log('✅ Avatar refreshed successfully:', data.avatar_url);
-        }
-      } catch (error) {
-        console.error('❌ Error refreshing avatar:', error);
-      }
-    }, 200); // Giảm xuống 200ms cho nhanh hơn
-  };
 
-  // Force refresh avatar (dùng khi update profile)
-  const forceRefreshAvatar = async () => {
-    if (!currentUser?.id) return;
-    
-    // Clear cache cho user này
-    const cacheKey = `avatar_${currentUser.id}`;
-    avatarCache.delete(cacheKey);
-    
-    // Force refresh
-    await refreshUserAvatar(true);
-  };
 
   useEffect(() => {
     console.log('AuthProvider: Setting up auth listener');
@@ -328,33 +256,29 @@ export function AuthProvider({ children }) {
       }
     };
     
-      const handleUserSession = async (session) => {
-    try {
-      if (session?.user) {
-        await fetchUserProfileWithTimeout(session.user);
-        // Preload avatar data để cache sẵn
-        setTimeout(() => {
-          refreshUserAvatar();
-        }, 100);
-      } else {
+    const handleUserSession = async (session) => {
+      try {
+        if (session?.user) {
+          await fetchUserProfileWithTimeout(session.user);
+        } else {
+          setCurrentUser(null);
+        }
+      } catch (err) {
+        console.error('Error in fetchUserProfile:', err);
+        // Không set currentUser thành null nếu có session
+        if (session?.user) {
+          const basicUser = {
+            ...session.user,
+            displayName: session.user.user_metadata?.display_name || session.user.email,
+            avatar_url: session.user.user_metadata?.avatar_url || null,
+            bio: ''
+          };
+          setCurrentUser(basicUser);
+        } else {
         setCurrentUser(null);
       }
-    } catch (err) {
-      console.error('Error in fetchUserProfile:', err);
-      // Không set currentUser thành null nếu có session
-      if (session?.user) {
-        const basicUser = {
-          ...session.user,
-          displayName: session.user.user_metadata?.display_name || session.user.email,
-          avatar_url: session.user.user_metadata?.avatar_url || null,
-          bio: ''
-        };
-        setCurrentUser(basicUser);
-      } else {
-      setCurrentUser(null);
-    }
-    }
-  };
+      }
+    };
     
     initializeAuth();
 
@@ -370,10 +294,6 @@ export function AuthProvider({ children }) {
     return () => {
       clearTimeout(timeoutId);
       subscription.unsubscribe();
-      // Cleanup debounce timer
-      if (refreshUserAvatar.debounceTimer) {
-        clearTimeout(refreshUserAvatar.debounceTimer);
-      }
     };
   }, []);
 
@@ -400,9 +320,7 @@ export function AuthProvider({ children }) {
     signup,
     login,
     logout,
-    updateCurrentUserProfile,
-    refreshUserAvatar,
-    forceRefreshAvatar
+    updateCurrentUserProfile
   };
 
   console.log('AuthProvider render:', { currentUser, loading });

@@ -15,3 +15,10 @@ ReactDOM.render(
 // to log results (for example: reportWebVitals(console.log))
 // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();
+
+window.addEventListener('error', function(e) {
+  console.error('🌋 Global error:', e);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('🌋 Unhandled promise rejection:', e);
+});

@@ -8,18 +8,13 @@ import {
   CameraIcon,
   MicrophoneIcon,
   TrashIcon,
-  ArrowLeftIcon,
-  PhoneIcon,
-  VideoCameraIcon,
-  ClockIcon
+  ArrowLeftIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
 import supabase from '../supabase';
 import VoiceRecorder from './VoiceRecorder';
 import VoicePlayer from './VoicePlayer';
 import VideoCall from './VideoCall';
-import CallHistory from './CallHistory';
-import { generateFilename, getFileExtension } from '../utils/fileUtils';
 
 export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts }) {
   const [channels, setChannels] = useState([]);
@@ -59,15 +54,14 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   const [heartSize, setHeartSize] = useState(1);
   const [isHeartPressed, setIsHeartPressed] = useState(false);
   const [heartInterval, setHeartInterval] = useState(null);
-  const [isStabilizing, setIsStabilizing] = useState(false);
-  const [showVideoCall, setShowVideoCall] = useState(false);
-  const [targetUserForCall, setTargetUserForCall] = useState(null);
-  const [showCallHistory, setShowCallHistory] = useState(false);
 
   // --- STATE PHÂN TRANG ---
   const [messageLimit, setMessageLimit] = useState(30);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  const [videoCallPopup, setVideoCallPopup] = useState(null); // { isCaller, remoteUserId, channelId }
+  const videoChannelRef = useRef();
 
   // Audio setup
   useEffect(() => {
@@ -685,10 +679,9 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     let media_type = null;
     try {
       if (mediaFile) {
-        // Upload file lên Supabase Storage với format tên mới
-        const fileExtension = getFileExtension(mediaFile.name, mediaFile.type);
-        const fileName = generateFilename(currentUser.display_name, fileExtension);
-        const filePath = `chat-media/${fileName}`;
+        // Upload file lên Supabase Storage
+        const ext = mediaFile.name.split('.').pop();
+        const filePath = `chat-media/${currentUser.id}_${Date.now()}.${ext}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('chat-media')
           .upload(filePath, mediaFile, { upsert: true });
@@ -894,15 +887,14 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     if (!currentUser || !currentChannel) return;
 
     try {
-      // Tạo file từ blob với format tên mới
-      const fileName = generateFilename(currentUser.display_name, '.wav');
-      const filePath = `voice-messages/${fileName}`;
+      // Tạo file từ blob
+      const fileName = `voice-messages/${currentUser.id}_${Date.now()}.wav`;
       const file = new File([audioBlob], fileName, { type: 'audio/wav' });
 
       // Upload lên Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('voice-messages')
-        .upload(filePath, file, { upsert: true });
+        .upload(fileName, file, { upsert: true });
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
@@ -914,7 +906,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
       const expireSeconds = 10000 * 365 * 24 * 60 * 60; // 10.000 năm
       const { data: signedUrlData, error: signedError } = await supabase.storage
         .from('voice-messages')
-        .createSignedUrl(filePath, expireSeconds);
+        .createSignedUrl(fileName, expireSeconds);
 
       if (signedError || !signedUrlData?.signedUrl) {
         console.error('Signed URL error:', signedError);
@@ -1098,14 +1090,12 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     };
   }, [currentChannel?.id, currentUser?.id]);
 
-  // Initial load - chỉ chạy một lần khi user thay đổi
+  // Initial load
   useEffect(() => {
-    if (currentUser?.id) {
-      fetchChannels();
-      fetchUsers();
-      fetchLatestMessages();
-    }
-  }, [currentUser?.id]); // Chỉ depend on user ID, không phải toàn bộ user object
+    fetchChannels();
+    fetchUsers();
+    fetchLatestMessages();
+  }, [currentUser]);
 
   // Cleanup heart interval on unmount
   useEffect(() => {
@@ -1129,15 +1119,12 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     }
   }, [loading]);
 
-  // Update channel user infos khi channels thay đổi - với debounce
+  // Update channel user infos khi channels thay đổi
   useEffect(() => {
     if (channels.length > 0) {
-      const timer = setTimeout(() => {
-        updateAllChannelUserInfos();
-      }, 100);
-      return () => clearTimeout(timer);
+      updateAllChannelUserInfos();
     }
-  }, [channels.length]); // Chỉ depend on channels length, không phải toàn bộ channels array
+  }, [channels]);
 
   // Đặt ref cho container scroll
   const messagesContainerRef = useRef(null);
@@ -1586,14 +1573,10 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
 
   // Khi user mở kênh chat, đánh dấu tất cả message_reads của user đó trong kênh thành 'seen'
   const handleChannelClick = async (channel) => {
-    // Prevent multiple rapid clicks
-    if (currentChannel?.id === channel.id) return;
-    
     setCurrentChannel(channel);
     setShowChatDetail(true); // Hiển thị chat detail
     await updateCurrentUserInfo(channel);
     if (window.innerWidth < 768) setShowMobileChat(true);
-    
     // Lấy tất cả message_id trong kênh
     const { data: msgIds } = await supabase
       .from('messages')
@@ -1647,26 +1630,6 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     fetchSeenStatus();
   }, [currentChannel, messages]);
 
-  // Stabilize chat when currentUser changes (e.g., after avatar refresh) - với debounce
-  useEffect(() => {
-    if (!currentUser?.id) return;
-    
-    setIsStabilizing(true);
-    const timer = setTimeout(async () => {
-      // Only refetch if we have a current channel and it's been stable
-      if (currentChannel && !loading) {
-        console.log('🔄 Chat: Stabilizing after user change, refetching messages...');
-        await fetchMessages(currentChannel.id, 30, 0, false);
-      }
-      setIsStabilizing(false);
-    }, 1000); // 1 giây debounce
-    
-    return () => {
-      clearTimeout(timer);
-      setIsStabilizing(false);
-    };
-  }, [currentUser?.id]); // Only depend on user ID, not the entire user object
-
   // Trước khi render danh sách messages
   console.log('Messages state before render:', messages);
 
@@ -1680,25 +1643,90 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     }
   };
 
-  if (loading || isStabilizing) {
+  // Tạo signaling channel (Supabase Realtime)
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!currentChannel) return;
+    const channelId = currentChannel.id;
+    const channel = supabase.channel('video-call-' + channelId);
+    videoChannelRef.current = channel;
+
+    channel.on('broadcast', { event: 'signal' }, payload => {
+      if (payload.payload.type === 'signal') {
+        window.dispatchEvent(new CustomEvent('video-signal', { detail: payload.payload }));
+      }
+      if (payload.payload.type === 'call-request' && payload.payload.to === currentUser.id) {
+        setVideoCallPopup({ isCaller: false, remoteUserId: payload.payload.from, channelId });
+      }
+      if (payload.payload.type === 'call-cancel' && payload.payload.to === currentUser.id) {
+        setVideoCallPopup(null);
+      }
+    });
+    channel.subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser, currentChannel]);
+
+  // Signaling channel object
+  const signalingChannel = {
+    send: msg => {
+      if (!videoChannelRef.current) return;
+      videoChannelRef.current.send({
+        type: 'broadcast',
+        event: 'signal',
+        payload: msg
+      });
+    },
+    on: (type, cb) => {
+      window.addEventListener('video-signal', e => {
+        if (e.detail.type === type) cb(e.detail);
+      });
+    },
+    off: () => {} // Bổ sung nếu cần
+  };
+
+  // Hàm gọi video
+  const startVideoCall = () => {
+    if (!currentUser || !currentChannel) return;
+    const remoteUserId = currentChannel.type === 'direct'
+      ? currentChannel.chat_channel_members.find(u => u.user_id !== currentUser.id)?.user_id
+      : null;
+    if (!remoteUserId) return alert('Chỉ hỗ trợ gọi video trong chat riêng!');
+    signalingChannel.send({
+      type: 'call-request',
+      from: currentUser.id,
+      to: remoteUserId
+    });
+    setVideoCallPopup({ isCaller: true, remoteUserId, channelId: currentChannel.id });
+  };
+
+  // Hàm từ chối cuộc gọi
+  const rejectVideoCall = () => {
+    if (!currentUser || !currentChannel || !videoCallPopup) return;
+    signalingChannel.send({
+      type: 'call-cancel',
+      from: currentUser.id,
+      to: videoCallPopup.remoteUserId
+    });
+    setVideoCallPopup(null);
+  };
+
+  if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-white text-lg mb-2">
-            {isStabilizing ? 'Đang đồng bộ...' : 'Đang tải chat...'}
-          </div>
+          <div className="text-white text-lg mb-2">Đang tải chat...</div>
           <div className="text-gray-400 text-sm mb-4">Vui lòng chờ trong giây lát</div>
-          {!isStabilizing && (
-            <button
-              onClick={() => {
-                setLoading(false);
-                setError('Đã timeout, vui lòng thử lại');
-              }}
-              className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-            >
-              Bỏ qua loading
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setLoading(false);
+              setError('Đã timeout, vui lòng thử lại');
+            }}
+            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+          >
+            Bỏ qua loading
+          </button>
         </div>
       </div>
     );
@@ -1844,34 +1872,25 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
             >
               <ChatBubbleLeftRightIcon className="w-5 h-5 text-white" />
             </button>
-            {/* Nút video call - chỉ hiển thị cho direct chat */}
-            {currentChannel.type === 'direct' && (
+            {/* Nút toggle âm thanh */}
+            <button
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className={`p-2 rounded-full transition-colors ${soundEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+              title={soundEnabled ? 'Tắt âm thanh' : 'Bật âm thanh'}
+            >
+              {soundEnabled ? '🔊' : '🔇'}
+            </button>
+            {/* Nút gọi video */}
+            {currentChannel?.type === 'direct' && (
               <button
-                onClick={() => {
-                  setTargetUserForCall(currentUserInfo);
-                  setShowVideoCall(true);
-                }}
-                className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-2"
-                title="Video call"
+                onClick={startVideoCall}
+                className="ml-2 p-2 rounded-full bg-green-500 text-white hover:bg-green-600 transition-colors"
+                title="Gọi video"
               >
-                <VideoCameraIcon className="w-5 h-5 text-white" />
+                <svg width={24} height={24} fill="none" stroke="currentColor"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M4 6h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2z" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>
               </button>
             )}
-            
-            {/* Nút audio call - chỉ hiển thị cho direct chat */}
-            {currentChannel.type === 'direct' && (
-              <button
-                onClick={() => {
-                  setTargetUserForCall(currentUserInfo);
-                  setShowVideoCall(true);
-                }}
-                className="p-2 rounded-full hover:bg-gray-800 transition-colors mr-2"
-                title="Audio call"
-              >
-                <PhoneIcon className="w-5 h-5 text-white" />
-              </button>
-            )}
-                  </div>
+          </div>
           
                   {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 custom-scrollbar bg-[#23232a]" onScroll={handleScroll} ref={messagesContainerRef}>
@@ -1903,21 +1922,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                       )}
                       {/* Hiển thị tin nhắn thoại */}
                       {msg.media_url && msg.media_type && msg.media_type === 'audio/wav' ? (
-                        <div className="relative group">
-                          <VoicePlayer audioUrl={msg.media_url} isOwn={isOwn} />
-                          {/* Nút xóa tin nhắn thoại (chỉ hiển thị cho tin nhắn của mình) */}
-                          {isOwn && (
-                            <button
-                              onClick={() => handleDeleteMessage(msg.id, msg.media_url, msg.media_type)}
-                              className="absolute top-0 right-0 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                              title="Xóa tin nhắn"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
+                        <VoicePlayer audioUrl={msg.media_url} isOwn={isOwn} />
                       ) : (
                         <div className={`px-4 py-2 rounded-2xl shadow ${isOwn ? 'bg-blue-500 text-white' : 'bg-gray-700 text-white'} text-sm break-words message-bubble relative group`}>
                           {msg.content}
@@ -2268,25 +2273,34 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
           </div>
         </div>
       )}
-      
-      {/* Video Call Component */}
-      {showVideoCall && targetUserForCall && (
-        <VideoCall
-          isOpen={showVideoCall}
-          onClose={() => {
-            setShowVideoCall(false);
-            setTargetUserForCall(null);
-          }}
-          targetUser={targetUserForCall}
-          currentUser={currentUser}
-        />
+      {/* Hiển thị popup nhận cuộc gọi */}
+      {videoCallPopup && !videoCallPopup.isCaller && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+          <div className="bg-white rounded-lg p-6 flex flex-col items-center">
+            <div className="text-lg font-bold mb-2">Có cuộc gọi video đến!</div>
+            <div className="mb-4">Bạn có muốn nhận cuộc gọi không?</div>
+            <div className="flex space-x-4">
+              <button
+                onClick={() => setVideoCallPopup(videoCallPopup)}
+                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+              >Nhận</button>
+              <button
+                onClick={rejectVideoCall}
+                className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+              >Từ chối</button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Call History Component */}
-      {showCallHistory && (
-        <CallHistory
-          isOpen={showCallHistory}
-          onClose={() => setShowCallHistory(false)}
+      {/* Hiển thị VideoCall khi đang gọi hoặc nhận */}
+      {videoCallPopup && (
+        <VideoCall
+          signalingChannel={signalingChannel}
+          onClose={() => setVideoCallPopup(null)}
+          isCaller={videoCallPopup.isCaller}
+          remoteUserId={videoCallPopup.remoteUserId}
+          localUserId={currentUser.id}
         />
       )}
     </>

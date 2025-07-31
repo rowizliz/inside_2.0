@@ -4,7 +4,6 @@ import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
 import { useAuth } from '../context/AuthContext';
 import supabase from '../supabase';
 import Comment from './Comment';
-import CommentInput from './CommentInput';
 import VoicePlayer from './VoicePlayer';
 
 export default function Post({ post, onPostDeleted, onUserClick }) {
@@ -35,15 +34,13 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
       
       const { data, error } = await supabase
         .from('post_likes')
-        .select('id')
+        .select('*')
         .eq('post_id', post.id)
         .eq('user_id', currentUser.id)
         .single();
 
       if (!error && data) {
         setLiked(true);
-      } else if (error && error.code !== 'PGRST116') {
-        console.error('Error checking like status:', error);
       }
     };
 
@@ -56,23 +53,19 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'post_likes' },
         (payload) => {
-          try {
-            console.log('Post likes realtime:', payload);
-            if (payload.new && payload.new.post_id === post.id) {
-              if (payload.eventType === 'INSERT') {
-                setLikes(prev => prev + 1);
-                if (payload.new.user_id === currentUser?.id) {
-                  setLiked(true);
-                }
-              } else if (payload.eventType === 'DELETE') {
-                setLikes(prev => Math.max(0, prev - 1));
-                if (payload.old.user_id === currentUser?.id) {
-                  setLiked(false);
-                }
+          console.log('Post likes realtime:', payload);
+          if (payload.new && payload.new.post_id === post.id) {
+            if (payload.eventType === 'INSERT') {
+              setLikes(prev => prev + 1);
+              if (payload.new.user_id === currentUser?.id) {
+                setLiked(true);
+              }
+            } else if (payload.eventType === 'DELETE') {
+              setLikes(prev => Math.max(0, prev - 1));
+              if (payload.old.user_id === currentUser?.id) {
+                setLiked(false);
               }
             }
-          } catch (error) {
-            console.error('Error in post_likes realtime:', error);
           }
         }
       )
@@ -146,58 +139,38 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
     if (!currentUser) return;
 
     try {
-      if (liked) {
+    if (liked) {
         // Unlike
-        const { error: unlikeError } = await supabase
+        await supabase
           .from('post_likes')
           .delete()
           .eq('post_id', post.id)
           .eq('user_id', currentUser.id);
 
-        if (unlikeError) {
-          console.error('Error unlike:', unlikeError);
-          return;
-        }
-
         // Update post likes count
-        const { error: updateError } = await supabase
+        await supabase
           .from('posts')
           .update({ likes: likes - 1 })
           .eq('id', post.id);
 
-        if (updateError) {
-          console.error('Error updating post likes:', updateError);
-          return;
-        }
-
-        setLikes(likes - 1);
+      setLikes(likes - 1);
         setLiked(false);
-      } else {
+    } else {
         // Like
-        const { error: likeError } = await supabase
+        await supabase
           .from('post_likes')
           .insert({
             post_id: post.id,
             user_id: currentUser.id
           });
 
-        if (likeError) {
-          console.error('Error like:', likeError);
-          return;
-        }
-
         // Update post likes count
-        const { error: updateError } = await supabase
+        await supabase
           .from('posts')
           .update({ likes: likes + 1 })
           .eq('id', post.id);
 
-        if (updateError) {
-          console.error('Error updating post likes:', updateError);
-          return;
-        }
-
-        setLikes(likes + 1);
+      setLikes(likes + 1);
         setLiked(true);
       }
     } catch (error) {
@@ -467,26 +440,20 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
               </button>
             </div>
 
-            {/* Like and Comment Count - Cùng hàng */}
-            {(likes > 0 || comments.length > 0) && (
-              <div className="flex items-center justify-center space-x-4 mt-2 text-sm text-gray-400">
-                {likes > 0 && (
-                  <div className="flex items-center space-x-1">
-                    <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                      <HeartSolidIcon className="w-2 h-2 text-white" />
-                    </div>
-                    <span>{likes} người thích</span>
-                  </div>
-                )}
-                
-                {comments.length > 0 && (
-                  <div className="flex items-center space-x-1">
-                    <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
-                      <ChatBubbleLeftIcon className="w-2 h-2 text-white" />
-                    </div>
-                    <span>{comments.length} bình luận</span>
-                  </div>
-                )}
+            {/* Like Count */}
+            {likes > 0 && (
+              <div className="flex items-center justify-center space-x-1 mt-2 text-sm text-gray-400">
+                <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                  <HeartSolidIcon className="w-2 h-2 text-white" />
+                </div>
+                <span>{likes} người thích</span>
+              </div>
+            )}
+
+            {/* Comments Count */}
+            {comments.length > 0 && (
+              <div className="mt-2 text-sm text-gray-400 text-center">
+                {comments.length} bình luận
               </div>
             )}
           </div>
@@ -511,12 +478,6 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
                 }
               </button>
             )}
-            
-            {/* Comment Input - Đặt xuống dưới tất cả bình luận */}
-            <CommentInput 
-              postId={post.id} 
-              onCommentAdded={handleCommentAdded}
-            />
           </div>
         </div>
       </div>

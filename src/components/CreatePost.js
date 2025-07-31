@@ -3,9 +3,8 @@ import { PhotoIcon, VideoCameraIcon, XMarkIcon, MicrophoneIcon } from '@heroicon
 import VoiceRecorder from './VoiceRecorder';
 import { useAuth } from '../context/AuthContext';
 import supabase from '../supabase';
-import { generateFilename, getFileExtension } from '../utils/fileUtils';
 
-export default function CreatePost({ onPostCreated, avatarUrl }) {
+export default function CreatePost({ onPostCreated }) {
   const [content, setContent] = useState('');
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
@@ -41,9 +40,11 @@ export default function CreatePost({ onPostCreated, avatarUrl }) {
         console.log('Uploading file:', mediaFile.name, mediaFile.type);
         
         try {
-          // Upload file to Supabase Storage with new naming format
-          const fileExtension = getFileExtension(mediaFile.name, mediaFile.type);
-          const fileName = generateFilename(currentUser.displayName, fileExtension);
+          // Upload file to Supabase Storage
+          const fileExtension = mediaFile.name.split('.').pop() || 'jpg';
+          const timestamp = Date.now();
+          const randomId = Math.random().toString(36).substring(2, 8);
+          const fileName = `${timestamp}_${randomId}.${fileExtension}`;
           
           console.log('Uploading to bucket: posts, filename:', fileName);
           
@@ -135,15 +136,14 @@ export default function CreatePost({ onPostCreated, avatarUrl }) {
 
     setLoading(true);
     try {
-      // Tạo file từ blob với format tên mới
-      const fileName = generateFilename(currentUser.displayName, '.wav');
-      const filePath = `voice-posts/${fileName}`;
+      // Tạo file từ blob
+      const fileName = `voice-posts/${currentUser.id}_${Date.now()}.wav`;
       const file = new File([audioBlob], fileName, { type: 'audio/wav' });
 
       // Upload lên Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('voice-posts')
-        .upload(filePath, file, { upsert: true });
+        .upload(fileName, file, { upsert: true });
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
@@ -156,7 +156,7 @@ export default function CreatePost({ onPostCreated, avatarUrl }) {
       const expireSeconds = 10000 * 365 * 24 * 60 * 60; // 10.000 năm
       const { data: signedUrlData, error: signedError } = await supabase.storage
         .from('voice-posts')
-        .createSignedUrl(filePath, expireSeconds);
+        .createSignedUrl(fileName, expireSeconds);
 
       if (signedError || !signedUrlData?.signedUrl) {
         console.error('Signed URL error:', signedError);
@@ -215,9 +215,9 @@ export default function CreatePost({ onPostCreated, avatarUrl }) {
             {/* Avatar */}
             <div className="flex-shrink-0">
               <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
-                {avatarUrl ? (
+                {currentUser?.avatar_url ? (
                   <img 
-                    src={avatarUrl} 
+                    src={currentUser.avatar_url} 
                     alt="Avatar" 
                     className="w-full h-full rounded-full object-cover" 
                   />

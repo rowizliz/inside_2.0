@@ -2006,7 +2006,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
       {showUserList && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
           <div className="w-full max-w-sm mx-auto bg-[#23232a] rounded-2xl shadow-2xl p-5 relative animate-fadeIn">
-            <button onClick={() => setShowUserList(false)} className="absolute top-3 right-3 text-gray-400 hover:text-white text-xl font-bold">×</button>
+            <button onClick={() => setShowUserList(false)} className="absolute top-3 right-3 bg-black bg-opacity-60 text-white close-button hover:bg-opacity-80 transition-colors">×</button>
             <h3 className="text-white font-semibold mb-3 text-lg text-center">Chat riêng với người dùng</h3>
             <div className="text-gray-400 text-sm mb-3 text-center">Chọn user để bắt đầu chat riêng:</div>
             <div className="max-h-60 overflow-y-auto custom-scrollbar divide-y divide-gray-800">
@@ -2041,7 +2041,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
       {showCreateChannel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
           <div className="w-full max-w-sm mx-auto bg-[#23232a] rounded-2xl shadow-2xl p-5 relative animate-fadeIn">
-            <button onClick={() => setShowCreateChannel(false)} className="absolute top-3 right-3 text-gray-400 hover:text-white text-xl font-bold">×</button>
+            <button onClick={() => setShowCreateChannel(false)} className="absolute top-3 right-3 bg-black bg-opacity-60 text-white close-button hover:bg-opacity-80 transition-colors">×</button>
             <h3 className="text-white font-semibold mb-3 text-lg text-center">Tạo group chat mới</h3>
             <input
               type="text"
@@ -2101,7 +2101,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
               <video src={modalMedia.url} controls className="max-w-[90vw] max-h-[90vh]" />
             )}
             <button
-              className="absolute top-2 right-2 bg-black bg-opacity-60 text-white rounded-full p-2 text-xl"
+              className="absolute top-2 right-2 bg-black bg-opacity-60 text-white close-button"
               onClick={() => setModalMedia(null)}
             >×</button>
           </div>

@@ -259,7 +259,7 @@ export default function CreatePost({ onPostCreated }) {
                     <button
                       type="button"
                       onClick={removeMedia}
-                      className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 transition-colors"
+                      className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white close-button transition-colors"
                     >
                       <XMarkIcon className="w-4 h-4" />
                     </button>

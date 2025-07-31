@@ -12,8 +12,6 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
   const [comments, setComments] = useState(post.comments || []);
   const [showAllComments, setShowAllComments] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
-  const [imageZoom, setImageZoom] = useState(1);
-  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
   const { currentUser } = useAuth();
   const [authorAvatar, setAuthorAvatar] = useState(post.author_avatar_url || null);
 
@@ -257,55 +255,10 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
 
   const handleImageModalOpen = () => {
     setShowImageModal(true);
-    setImageZoom(1);
-    setImagePosition({ x: 0, y: 0 });
   };
 
   const handleImageModalClose = () => {
     setShowImageModal(false);
-    setImageZoom(1);
-    setImagePosition({ x: 0, y: 0 });
-  };
-
-  const handleZoomIn = () => {
-    setImageZoom(prev => Math.min(prev + 0.5, 5));
-  };
-
-  const handleZoomOut = () => {
-    setImageZoom(prev => Math.max(prev - 0.5, 0.5));
-  };
-
-  const handleResetZoom = () => {
-    setImageZoom(1);
-    setImagePosition({ x: 0, y: 0 });
-  };
-
-  const handleImageMouseDown = (e) => {
-    if (imageZoom > 1) {
-      const startX = e.clientX - imagePosition.x;
-      const startY = e.clientY - imagePosition.y;
-      
-      const handleMouseMove = (e) => {
-        setImagePosition({
-          x: e.clientX - startX,
-          y: e.clientY - startY
-        });
-      };
-      
-      const handleMouseUp = () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-      
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-  };
-
-  const handleWheel = (e) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.2 : 0.2;
-    setImageZoom(prev => Math.max(0.5, Math.min(5, prev + delta)));
   };
 
   // Sắp xếp comments theo yêu cầu: cũ nhất + nhiều tim + mới nhất
@@ -529,84 +482,15 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
         </div>
       </div>
 
-      {/* Image Modal */}
+      {/* Image Modal - Simple like Comment */}
       {showImageModal && post.media_url && post.media_type?.startsWith('image/') && (
-        <div 
-          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50"
-          onClick={handleImageModalClose}
-        >
-          {/* Zoom Controls */}
-          <div className="absolute top-4 left-4 flex space-x-2 z-10">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80" onClick={handleImageModalClose}>
+          <div className="relative max-w-full max-h-full" onClick={e => e.stopPropagation()}>
+            <img src={post.media_url} alt="Post media" className="max-w-[90vw] max-h-[90vh] object-contain" />
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleZoomIn();
-              }}
-              className="text-white bg-black/50 hover:bg-black/70 rounded-full p-2 transition-colors"
-              title="Phóng to"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
-              </svg>
-            </button>
-
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleZoomOut();
-              }}
-              className="text-white bg-black/50 hover:bg-black/70 rounded-full p-2 transition-colors"
-              title="Thu nhỏ"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10h-6" />
-              </svg>
-            </button>
-
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleResetZoom();
-              }}
-              className="text-white bg-black/50 hover:bg-black/70 rounded-full p-2 transition-colors"
-              title="Reset zoom"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Close Button */}
-          <button
-            onClick={handleImageModalClose}
-            className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 transition-colors z-10"
-          >
-            <XMarkIcon className="w-6 h-6" />
-          </button>
-
-          {/* Zoom Info */}
-          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 text-white bg-black/50 rounded-full px-3 py-1 text-sm z-10">
-            {Math.round(imageZoom * 100)}%
-          </div>
-
-          {/* Image Container */}
-          <div 
-            className="relative w-full h-full flex items-center justify-center overflow-hidden"
-            onWheel={handleWheel}
-          >
-            <img 
-              src={post.media_url} 
-              alt="Post media" 
-              className="max-w-none transition-transform duration-200 ease-out"
-              style={{
-                transform: `translate(${imagePosition.x}px, ${imagePosition.y}px) scale(${imageZoom})`,
-                cursor: imageZoom > 1 ? 'grab' : 'default',
-              }}
-              onMouseDown={handleImageMouseDown}
-              onClick={(e) => e.stopPropagation()}
-            />
+              className="absolute top-2 right-2 bg-black bg-opacity-60 text-white close-button"
+              onClick={handleImageModalClose}
+            >×</button>
           </div>
         </div>
       )}

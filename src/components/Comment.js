@@ -403,7 +403,7 @@ export default function Comment({ postId, comments, onCommentAdded }) {
               <video src={modalMedia.url} controls className="max-w-[90vw] max-h-[90vh]" />
             )}
             <button
-              className="absolute top-2 right-2 bg-black bg-opacity-60 text-white rounded-full p-2 text-xl"
+              className="absolute top-2 right-2 bg-black bg-opacity-60 text-white close-button"
               onClick={() => setModalMedia(null)}
             >×</button>
           </div>

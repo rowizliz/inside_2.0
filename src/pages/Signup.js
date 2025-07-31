@@ -164,6 +164,7 @@ export default function Signup() {
                 onChange={(e) => setDisplayName(e.target.value)}
                 className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
                 placeholder="Tên hiển thị"
+                style={{ fontSize: '16px' }}
               />
             </div>
             <div>
@@ -172,8 +173,9 @@ export default function Signup() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full px-3 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
                 placeholder="Email"
+                style={{ fontSize: '16px' }}
               />
             </div>
             <div>
@@ -184,6 +186,7 @@ export default function Signup() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
                 placeholder="Mật khẩu"
+                style={{ fontSize: '16px' }}
               />
             </div>
             <div>
@@ -194,6 +197,7 @@ export default function Signup() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
                 placeholder="Xác nhận mật khẩu"
+                style={{ fontSize: '16px' }}
               />
             </div>
           </div>

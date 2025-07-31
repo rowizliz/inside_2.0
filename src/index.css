@@ -67,3 +67,73 @@ code {
     transform: translateY(0);
   }
 }
+
+/* Prevent zoom on input fields on mobile */
+input[type="text"], 
+input[type="email"], 
+input[type="password"], 
+input[type="search"], 
+input[type="tel"], 
+input[type="url"], 
+textarea {
+  font-size: 16px !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  border-radius: 0;
+}
+
+/* Prevent zoom on iOS Safari */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  input[type="text"], 
+  input[type="email"], 
+  input[type="password"], 
+  input[type="search"], 
+  input[type="tel"], 
+  input[type="url"], 
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Additional mobile-specific fixes */
+@media (max-width: 768px) {
+  input[type="text"], 
+  input[type="email"], 
+  input[type="password"], 
+  input[type="search"], 
+  input[type="tel"], 
+  input[type="url"], 
+  textarea {
+    font-size: 16px !important;
+    transform: none !important;
+  }
+}
+
+/* Heart button animations */
+.heart-button {
+  transition: all 0.2s ease;
+}
+
+.heart-button:active {
+  transform: scale(1.1);
+}
+
+.heart-button.pressed {
+  animation: heartBeat 0.3s ease-in-out;
+}
+
+@keyframes heartBeat {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* Chat input animations */
+.chat-input-expanded {
+  transition: all 0.3s ease;
+}
+
+.chat-input-collapsed {
+  transition: all 0.3s ease;
+}

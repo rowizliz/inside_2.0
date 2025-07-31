@@ -48,6 +48,11 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   const [mediaPreview, setMediaPreview] = useState(null);
   const [modalMedia, setModalMedia] = useState(null);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [isInputExpanded, setIsInputExpanded] = useState(false);
+  const [showAudioPhotoButtons, setShowAudioPhotoButtons] = useState(false);
+  const [heartSize, setHeartSize] = useState(1);
+  const [isHeartPressed, setIsHeartPressed] = useState(false);
+  const [heartInterval, setHeartInterval] = useState(null);
 
   // --- STATE PHÂN TRANG ---
   const [messageLimit, setMessageLimit] = useState(30);
@@ -664,7 +669,7 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
 
   // Send message
   const handleSendMessage = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if ((!newMessage.trim() && !mediaFile) || !currentChannel) return;
     let media_url = null;
     let media_type = null;
@@ -715,6 +720,92 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
       setMediaPreview(null);
     } catch (error) {
       console.error('Error:', error);
+    }
+  };
+
+  // Xử lý mở rộng input
+  const handleInputClick = () => {
+    setIsInputExpanded(true);
+    setShowAudioPhotoButtons(false);
+  };
+
+  // Xử lý thu gọn input
+  const handleInputBlur = () => {
+    if (!newMessage.trim()) {
+      setIsInputExpanded(false);
+      setShowAudioPhotoButtons(false);
+    }
+  };
+
+  // Xử lý toggle audio/photo buttons
+  const handleToggleAudioPhoto = () => {
+    setShowAudioPhotoButtons(!showAudioPhotoButtons);
+  };
+
+  // Xử lý nhấn trái tim
+  const handleHeartPress = () => {
+    setIsHeartPressed(true);
+    setHeartSize(1);
+    
+    // Bắt đầu interval để tăng kích thước
+    const interval = setInterval(() => {
+      setHeartSize(prev => {
+        const newSize = prev + 0.1;
+        return newSize > 2 ? 2 : newSize; // Giới hạn độ to tối đa là 2
+      });
+    }, 100);
+    
+    setHeartInterval(interval);
+  };
+
+  // Xử lý thả trái tim
+  const handleHeartRelease = async () => {
+    setIsHeartPressed(false);
+    
+    // Clear interval
+    if (heartInterval) {
+      clearInterval(heartInterval);
+      setHeartInterval(null);
+    }
+    
+    // Gửi trái tim với kích thước tương ứng
+    await sendHeartMessage(heartSize);
+    
+    // Reset kích thước
+    setHeartSize(1);
+  };
+
+  // Gửi tin nhắn trái tim
+  const sendHeartMessage = async (size) => {
+    if (!currentChannel) return;
+
+    try {
+      const heartEmoji = size >= 1.5 ? '❤️' : size >= 1.2 ? '💖' : '💕';
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          content: heartEmoji,
+          channel_id: currentChannel.id,
+          author_uid: currentUser.id,
+          author_display_name: currentUser.display_name,
+          author_avatar_url: currentUser.avatar_url,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error sending heart message:', error);
+        return;
+      }
+
+      updateLatestMessage(currentChannel.id, data);
+
+      // Phát âm thanh thông báo
+      if (soundEnabled) {
+        playNotificationSound();
+      }
+    } catch (error) {
+      console.error('Error sending heart message:', error);
     }
   };
 
@@ -932,6 +1023,15 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     fetchUsers();
     fetchLatestMessages();
   }, [currentUser]);
+
+  // Cleanup heart interval on unmount
+  useEffect(() => {
+    return () => {
+      if (heartInterval) {
+        clearInterval(heartInterval);
+      }
+    };
+  }, [heartInterval]);
 
   // Timeout để tránh stuck loading
   useEffect(() => {
@@ -1691,43 +1791,128 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                 onCancel={() => setShowVoiceRecorder(false)}
               />
             ) : (
-              <form onSubmit={handleSendMessage} className="flex space-x-3 items-center">
-                <label className="cursor-pointer">
-                  <CameraIcon className="w-6 h-6 text-gray-400 hover:text-blue-500" />
-                  <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowVoiceRecorder(true)}
-                  className="p-1.5 rounded-full hover:bg-gray-800 transition-colors flex-shrink-0"
-                >
-                  <MicrophoneIcon className="w-4 h-4 text-gray-400 hover:text-red-500" />
-                </button>
+              <div className="flex items-center space-x-2">
+                {/* Audio/Photo Buttons - Thu gọn khi mở rộng */}
+                {!isInputExpanded ? (
+                  <>
+                    <label className="cursor-pointer p-2 rounded-full hover:bg-gray-800 transition-colors">
+                      <CameraIcon className="w-5 h-5 text-gray-400 hover:text-blue-500" />
+                      <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowVoiceRecorder(true)}
+                      className="p-2 rounded-full hover:bg-gray-800 transition-colors"
+                    >
+                      <MicrophoneIcon className="w-5 h-5 text-gray-400 hover:text-red-500" />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleToggleAudioPhoto}
+                    className="p-2 rounded-full hover:bg-gray-800 transition-colors"
+                  >
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                )}
+
+                {/* Audio/Photo Dropdown khi mở rộng */}
+                {isInputExpanded && showAudioPhotoButtons && (
+                  <div className="absolute bottom-20 left-4 bg-gray-800 rounded-lg p-2 shadow-lg border border-gray-700">
+                    <div className="flex space-x-2">
+                      <label className="cursor-pointer p-2 rounded-full hover:bg-gray-700 transition-colors">
+                        <CameraIcon className="w-4 h-4 text-gray-400 hover:text-blue-500" />
+                        <input type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowVoiceRecorder(true)}
+                        className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+                      >
+                        <MicrophoneIcon className="w-4 h-4 text-gray-400 hover:text-red-500" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Media Preview */}
                 {mediaPreview && (
                   <div className="relative">
                     {mediaFile && mediaFile.type.startsWith('image/') ? (
-                      <img src={mediaPreview} alt="preview" className="w-12 h-12 object-cover rounded-lg mr-2" />
+                      <img src={mediaPreview} alt="preview" className="w-12 h-12 object-cover rounded-lg" />
                     ) : (
-                      <video src={mediaPreview} className="w-12 h-12 rounded-lg mr-2" controls />
+                      <video src={mediaPreview} className="w-12 h-12 rounded-lg" controls />
                     )}
-                    <button type="button" onClick={() => { setMediaFile(null); setMediaPreview(null); }} className="absolute top-0 right-0 bg-black bg-opacity-60 rounded-full p-1 text-white">&times;</button>
+                    <button 
+                      type="button" 
+                      onClick={() => { setMediaFile(null); setMediaPreview(null); }} 
+                      className="absolute -top-1 -right-1 bg-black bg-opacity-60 rounded-full p-1 text-white text-xs"
+                    >
+                      ×
+                    </button>
                   </div>
                 )}
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Nhập tin nhắn..."
-                  className="flex-1 bg-gray-900 text-white placeholder-gray-400 rounded-full px-4 py-3 outline-none border border-gray-700 focus:border-blue-500 shadow text-sm"
-                />
+
+                {/* Input Field */}
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage(e);
+                      }
+                    }}
+                    onClick={handleInputClick}
+                    onBlur={handleInputBlur}
+                    placeholder={isInputExpanded ? "Nhập tin nhắn..." : "Aa"}
+                    className={`w-full bg-gray-900 text-white placeholder-gray-400 rounded-full px-4 py-3 outline-none border border-gray-700 focus:border-blue-500 shadow ${
+                      isInputExpanded ? 'pr-12 chat-input-expanded' : 'pr-4 chat-input-collapsed'
+                    }`}
+                    style={{ fontSize: '16px' }}
+                  />
+                  
+                  {/* Send Button (chỉ hiển thị khi có text) */}
+                  {isInputExpanded && newMessage.trim() && (
+                    <button
+                      type="button"
+                      onClick={handleSendMessage}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-600 text-white p-2 rounded-full hover:bg-blue-700 transition-colors"
+                    >
+                      <PaperAirplaneIcon className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Heart Button */}
                 <button
-                  type="submit"
-                  disabled={!newMessage.trim() && !mediaFile}
-                  className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow text-sm"
+                  type="button"
+                  onMouseDown={handleHeartPress}
+                  onMouseUp={handleHeartRelease}
+                  onMouseLeave={handleHeartRelease}
+                  onTouchStart={handleHeartPress}
+                  onTouchEnd={handleHeartRelease}
+                  className={`heart-button p-3 rounded-full ${
+                    isHeartPressed ? 'bg-red-500 pressed' : 'bg-gray-700 hover:bg-gray-600'
+                  }`}
+                  style={{ 
+                    transform: `scale(${heartSize})`
+                  }}
                 >
-                  <PaperAirplaneIcon className="w-5 h-5" />
+                  <svg 
+                    className="w-5 h-5 text-white" 
+                    fill="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                  </svg>
                 </button>
-              </form>
+              </div>
             )}
           </div>
         </div>

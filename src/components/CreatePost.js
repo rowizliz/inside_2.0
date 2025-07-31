@@ -233,8 +233,9 @@ export default function CreatePost({ onPostCreated }) {
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Chia sẻ điều gì đó..."
-                className="w-full bg-transparent text-white placeholder-gray-400 resize-none outline-none text-lg text-center sm:text-left px-2"
+                className="w-full bg-transparent text-white placeholder-gray-400 resize-none outline-none text-center sm:text-left px-2"
                 rows="3"
+                style={{ fontSize: '16px' }}
               />
 
               {/* Media Preview */}

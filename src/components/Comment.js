@@ -290,7 +290,8 @@ export default function Comment({ postId, comments, onCommentAdded }) {
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
                 placeholder="Viết bình luận..."
-                className="flex-1 bg-transparent text-white placeholder-gray-400 outline-none text-sm min-w-0"
+                className="flex-1 bg-transparent text-white placeholder-gray-400 outline-none min-w-0"
+                style={{ fontSize: '16px' }}
               />
               
               <button

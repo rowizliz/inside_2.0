@@ -284,6 +284,7 @@ export default function UserProfile({ userId, onBack }) {
                   placeholder="Viết gì đó về bản thân..."
                   className="w-full bg-gray-800 text-white placeholder-gray-400 rounded-lg p-3 resize-none"
                   rows="3"
+                  style={{ fontSize: '16px' }}
                 />
               ) : (
                 <p className="text-gray-300 mb-4">

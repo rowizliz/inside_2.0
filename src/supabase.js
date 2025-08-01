@@ -10,6 +10,11 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
     detectSessionInUrl: false,
     storage: window.localStorage,
     storageKey: 'inside-app-auth'
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    }
   }
 })
 

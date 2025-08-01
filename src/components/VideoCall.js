@@ -3,7 +3,8 @@ import 'webrtc-adapter';
 
 export default function VideoCall({ signalingChannel, onClose, isCaller, remoteUserId, localUserId }) {
   const localVideo = useRef();
-  const remoteMediaRef = useRef();
+  const remoteVideo = useRef();
+  const remoteAudio = useRef();
   const [error, setError] = useState(null);
   const [devices, setDevices] = useState([]);
   const [deviceLog, setDeviceLog] = useState('');
@@ -17,10 +18,12 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
   const [connectionAttempts, setConnectionAttempts] = useState(0);
   const [iceConnectionState, setIceConnectionState] = useState('new');
   const [connectionQuality, setConnectionQuality] = useState('unknown');
+  const [debugLog, setDebugLog] = useState([]);
   
   // WebRTC refs
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
+  const remoteStreamRef = useRef(null);
   const handlerRef = useRef(null);
   const ringtoneRef = useRef(null);
   const durationIntervalRef = useRef(null);
@@ -28,6 +31,14 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
   const heartbeatIntervalRef = useRef(null);
   const pendingCandidatesRef = useRef([]);
   const lastHeartbeatRef = useRef(Date.now());
+  const callTimeoutRef = useRef(null);
+
+  // Debug logging function
+  const addDebugLog = (message) => {
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`[VideoCall ${timestamp}] ${message}`);
+    setDebugLog(prev => [...prev.slice(-10), `${timestamp}: ${message}`]);
+  };
 
   // Ringtone audio - Sử dụng audio context để tạo tone đơn giản
   useEffect(() => {
@@ -90,7 +101,7 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
           attemptReconnection();
           return;
         }
-        
+
         // Send heartbeat
         try {
           signalingChannel.send({
@@ -159,21 +170,25 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
           if (isRinging) {
             const osc = audioContext.createOscillator();
             const gain = audioContext.createGain();
-            
+
             osc.connect(gain);
             gain.connect(audioContext.destination);
-            
+
             osc.frequency.setValueAtTime(800, audioContext.currentTime);
             osc.frequency.setValueAtTime(600, audioContext.currentTime + 0.5);
             osc.frequency.setValueAtTime(800, audioContext.currentTime + 1);
-            
+
             gain.gain.setValueAtTime(0.2, audioContext.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 2);
-            
+
             osc.start();
             osc.stop(audioContext.currentTime + 2);
-            
-            setTimeout(playTone, 2000);
+
+            // Lưu timeout ID để có thể clear khi cần
+            const timeoutId = setTimeout(playTone, 2000);
+            if (ringtoneRef.current) {
+              ringtoneRef.current.timeoutId = timeoutId;
+            }
           }
         };
         
@@ -188,7 +203,107 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
 
   const stopRinging = () => {
     setIsRinging(false);
+
+    // Clear timeout để dừng việc lặp lại ringtone
+    if (ringtoneRef.current && ringtoneRef.current.timeoutId) {
+      clearTimeout(ringtoneRef.current.timeoutId);
+      ringtoneRef.current.timeoutId = null;
+    }
+
+    // Dừng tất cả oscillators đang chạy
+    if (ringtoneRef.current && ringtoneRef.current.audioContext) {
+      try {
+        // Suspend audio context để dừng tất cả âm thanh
+        if (ringtoneRef.current.audioContext.state === 'running') {
+          ringtoneRef.current.audioContext.suspend();
+        }
+      } catch (err) {
+        console.warn('Error stopping ringtone:', err);
+      }
+    }
+
     console.log('🔕 Ringtone stopped');
+  };
+
+  // Hàm cleanup toàn diện
+  const cleanupCall = () => {
+    console.log('🧹 Starting comprehensive cleanup...');
+
+    // Stop ringtone
+    stopRinging();
+
+    // Clear timeouts and intervals
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+
+    if (callTimeoutRef.current) {
+      clearTimeout(callTimeoutRef.current);
+      callTimeoutRef.current = null;
+    }
+
+    // Stop all local stream tracks
+    if (localStreamRef.current) {
+      console.log('🛑 Stopping local stream tracks...');
+      localStreamRef.current.getTracks().forEach(track => {
+        console.log(`Stopping track: ${track.kind} - ${track.label}`);
+        track.stop();
+      });
+      localStreamRef.current = null;
+    }
+
+    // Stop remote stream tracks
+    if (remoteStream) {
+      console.log('🛑 Stopping remote stream tracks...');
+      remoteStream.getTracks().forEach(track => {
+        console.log(`Stopping remote track: ${track.kind} - ${track.label}`);
+        track.stop();
+      });
+    }
+
+    // Clear video elements
+    if (localVideo.current) {
+      localVideo.current.srcObject = null;
+      localVideo.current.pause();
+    }
+
+    if (remoteVideo.current) {
+      remoteVideo.current.srcObject = null;
+      remoteVideo.current.pause();
+    }
+
+    if (remoteAudio.current) {
+      remoteAudio.current.srcObject = null;
+      remoteAudio.current.pause();
+    }
+
+    // Close peer connection
+    if (peerConnectionRef.current) {
+      console.log('🔌 Closing peer connection...');
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+
+    // Remove signaling handlers
+    if (handlerRef.current && signalingChannel && signalingChannel.off) {
+      signalingChannel.off('signal', handlerRef.current);
+      signalingChannel.off('heartbeat', handlerRef.current);
+      handlerRef.current = null;
+    }
+
+    // Reset states
+    setIsConnected(false);
+    setCallStatus('ended');
+    setConnectionAttempts(0);
+    setError(null);
+
+    console.log('✅ Cleanup completed');
   };
 
   // Reconnection logic với exponential backoff
@@ -231,13 +346,36 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
 
   const initializeCall = async () => {
     try {
+      addDebugLog(`Initializing call - isCaller: ${isCaller}, remoteUserId: ${remoteUserId}, localUserId: ${localUserId}`);
+      addDebugLog(`Signaling channel: ${signalingChannel ? 'Available' : 'Missing'}`);
+
+      // Kiểm tra signaling channel
+      if (!signalingChannel) {
+        throw new Error('Signaling channel is not available');
+      }
+
+      // Kiểm tra signaling channel có method send không
+      if (typeof signalingChannel.send !== 'function') {
+        throw new Error('Signaling channel does not have send method');
+      }
+
+      // Thiết lập timeout để tự động cleanup nếu call không thành công sau 60 giây
+      callTimeoutRef.current = setTimeout(() => {
+        console.log('⏰ Call timeout - cleaning up after 60 seconds');
+        setError('Cuộc gọi hết thời gian chờ');
+        cleanupCall();
+        onClose();
+      }, 60000);
+
       // Bắt đầu ringtone
       if (isCaller) {
         setCallStatus('ringing');
         startRinging();
+        addDebugLog('Started ringing for caller');
       } else {
         setCallStatus('ringing');
         startRinging();
+        addDebugLog('Started ringing for receiver');
       }
 
         const permission = await navigator.permissions.query({ name: 'camera' });
@@ -322,38 +460,49 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
         localStreamRef.current = localStream;
         if (localVideo.current && !isAudioOnly) {
           localVideo.current.srcObject = localStream;
+          // Đảm bảo local video được play
+          localVideo.current.play().catch(e => console.warn('Local video autoplay error:', e));
         }
 
       // Cải thiện RTCPeerConnection configuration với TURN servers
         const configuration = {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' },
-          { urls: 'stun:stun4.l.google.com:19302' },
-          // Free TURN servers (có thể thay thế bằng TURN server riêng)
-          {
-            urls: 'turn:openrelay.metered.ca:80',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-          },
-          {
-            urls: 'turn:openrelay.metered.ca:443',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-          },
-          {
-            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-          }
-        ],
-        iceCandidatePoolSize: 10,
-        bundlePolicy: 'max-bundle',
-        rtcpMuxPolicy: 'require',
-        iceTransportPolicy: 'all',
-        sdpSemantics: 'unified-plan'
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            // Thêm nhiều STUN servers khác
+            { urls: 'stun:stun.services.mozilla.com' },
+            { urls: 'stun:stun.ekiga.net' },
+            // Free TURN servers (có thể thay thế bằng TURN server riêng)
+            {
+              urls: 'turn:openrelay.metered.ca:80',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            },
+            // Thêm TURN server khác
+            {
+              urls: 'turn:relay1.expressturn.com:3478',
+              username: 'efJBIBF0YQAB8KAAAB',
+              credential: 'sTunLuCZNIrQQjqb'
+            }
+          ],
+          iceCandidatePoolSize: 20,
+          bundlePolicy: 'max-bundle',
+          rtcpMuxPolicy: 'require',
+          iceTransportPolicy: 'all',
+          sdpSemantics: 'unified-plan'
         };
 
         console.log('Tạo RTCPeerConnection với config:', configuration);
@@ -366,73 +515,89 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
         });
 
         const signalHandler = async (msg) => {
-        if (!peerConnection || peerConnection.connectionState === 'closed') {
-            console.log('Peer connection đã đóng, bỏ qua signal');
+          addDebugLog(`Received signal: ${JSON.stringify(msg)}`);
+
+          if (!peerConnection || peerConnection.connectionState === 'closed') {
+            addDebugLog('Peer connection closed, ignoring signal');
             return;
           }
-          
-          if (msg.type === 'signal' && msg.from === remoteUserId) {
+
+          // Handle different signal types
+          if (msg.type === 'offer' && msg.from === remoteUserId) {
             try {
-              console.log('Nhận signal từ:', msg.from, 'type:', msg.data.type);
-              
-              if (msg.data.type === 'offer') {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(msg.data));
+              addDebugLog('Processing offer from: ' + msg.from);
+              await peerConnection.setRemoteDescription(new RTCSessionDescription(msg));
               await addPendingCandidates();
-              
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                
-                signalingChannel.send({
-                  type: 'signal',
-                  to: remoteUserId,
-                  from: localUserId,
-                  data: answer
-                });
-              } else if (msg.data.type === 'answer') {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(msg.data));
-              await addPendingCandidates();
-              } else if (msg.data.type === 'ice-candidate') {
-              if (peerConnection.remoteDescription) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(msg.data.candidate));
-              } else {
-                console.log('Remote description chưa sẵn sàng, lưu candidate');
-                pendingCandidatesRef.current.push(msg.data.candidate);
-              }
+
+              const answer = await peerConnection.createAnswer();
+              await peerConnection.setLocalDescription(answer);
+
+              addDebugLog('Sending answer to: ' + remoteUserId);
+              signalingChannel.send({
+                type: 'answer',
+                to: remoteUserId,
+                from: localUserId,
+                sdp: answer.sdp
+              });
+            } catch (err) {
+              addDebugLog('Error processing offer: ' + err.message);
+              setError('Lỗi xử lý offer: ' + err.message);
             }
-          } catch (err) {
-            console.error('Lỗi khi xử lý signal:', err);
-          }
-        } else if (msg.type === 'heartbeat' && msg.from === remoteUserId) {
-          lastHeartbeatRef.current = Date.now();
-          console.log('Received heartbeat from:', msg.from);
+          } else if (msg.type === 'answer' && msg.from === remoteUserId) {
+            try {
+              addDebugLog('Processing answer from: ' + msg.from);
+              await peerConnection.setRemoteDescription(new RTCSessionDescription(msg));
+              await addPendingCandidates();
+            } catch (err) {
+              addDebugLog('Error processing answer: ' + err.message);
+              setError('Lỗi xử lý answer: ' + err.message);
+            }
+          } else if (msg.type === 'ice-candidate' && msg.from === remoteUserId) {
+            try {
+              if (peerConnection.remoteDescription) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(msg.candidate));
+                addDebugLog('Added ICE candidate');
+              } else {
+                addDebugLog('Remote description not ready, queuing candidate');
+                pendingCandidatesRef.current.push(msg.candidate);
+              }
+            } catch (err) {
+              addDebugLog('Error adding ICE candidate: ' + err.message);
+            }
+          } else if (msg.type === 'heartbeat' && msg.from === remoteUserId) {
+            lastHeartbeatRef.current = Date.now();
+            addDebugLog('Received heartbeat from: ' + msg.from);
           }
         };
 
         handlerRef.current = signalHandler;
-        signalingChannel.on('signal', signalHandler);
-      signalingChannel.on('heartbeat', signalHandler);
+
+        // Register for all signal types
+        const signalHandlerWrapper = signalingChannel.on('signal', signalHandler);
+        const heartbeatHandlerWrapper = signalingChannel.on('heartbeat', signalHandler);
+
+        addDebugLog('Signal handlers registered');
 
       // ICE candidate handler với retry logic
         peerConnection.onicecandidate = (event) => {
-        if (!peerConnection || peerConnection.connectionState === 'closed') {
+          if (!peerConnection || peerConnection.connectionState === 'closed') {
             return;
           }
-          
+
           if (event.candidate) {
             try {
-              console.log('Gửi ICE candidate đến:', remoteUserId);
+              addDebugLog('Sending ICE candidate to: ' + remoteUserId);
               signalingChannel.send({
-                type: 'signal',
+                type: 'ice-candidate',
                 to: remoteUserId,
                 from: localUserId,
-                data: {
-                  type: 'ice-candidate',
-                  candidate: event.candidate
-                }
+                candidate: event.candidate
               });
             } catch (err) {
-              console.error('Lỗi khi gửi ICE candidate:', err);
+              addDebugLog('Error sending ICE candidate: ' + err.message);
             }
+          } else {
+            addDebugLog('ICE gathering completed');
           }
         };
 
@@ -440,20 +605,27 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
         console.log('Nhận remote stream:', event.streams[0]);
         
         const stream = event.streams[0];
+        console.log('🎥 Received remote stream:', stream);
+        console.log('🎥 Stream tracks:', stream.getTracks().map(t => `${t.kind}: ${t.enabled}`));
         setRemoteStream(stream);
-        
-          if (remoteMediaRef.current) {
-          remoteMediaRef.current.srcObject = stream;
-          
+
+        // Set stream cho cả video và audio elements
+        if (remoteVideo.current) {
+          console.log('🎥 Setting remote video srcObject');
+          remoteVideo.current.srcObject = stream;
+          if (!isAudioOnly) {
+            remoteVideo.current.play().catch(e => console.warn('Video autoplay error:', e));
+          }
+        }
+
+        if (remoteAudio.current) {
+          console.log('🔊 Setting remote audio srcObject');
+          remoteAudio.current.srcObject = stream;
           if (isAudioOnly) {
             console.log('Audio-only mode, thử play audio...');
             setTimeout(() => {
-              playAudioSafely(remoteMediaRef.current);
+              playAudioSafely(remoteAudio.current);
             }, 100);
-          } else {
-            if (typeof remoteMediaRef.current.play === 'function') {
-              remoteMediaRef.current.play().catch(e => console.warn('Video autoplay error:', e));
-            }
           }
         }
       };
@@ -463,15 +635,22 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
           
           if (peerConnection.connectionState === 'connected') {
             setIsConnected(true);
-          setCallStatus('connected');
-          stopRinging();
-          setConnectionAttempts(0); // Reset attempts on success
-          lastHeartbeatRef.current = Date.now();
-          if (isAudioOnly && remoteMediaRef.current) {
-            setTimeout(() => {
-              playAudioSafely(remoteMediaRef.current);
-            }, 500);
-          }
+            setCallStatus('connected');
+            stopRinging();
+            setConnectionAttempts(0); // Reset attempts on success
+            lastHeartbeatRef.current = Date.now();
+
+            // Clear call timeout khi kết nối thành công
+            if (callTimeoutRef.current) {
+              clearTimeout(callTimeoutRef.current);
+              callTimeoutRef.current = null;
+            }
+
+            if (isAudioOnly && remoteAudio.current) {
+              setTimeout(() => {
+                playAudioSafely(remoteAudio.current);
+              }, 500);
+            }
         } else if (peerConnection.connectionState === 'disconnected') {
           setIsConnected(false);
           setCallStatus('connecting');
@@ -486,7 +665,17 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
           setCallStatus('failed');
           setError('Kết nối thất bại');
           stopRinging();
-          attemptReconnection();
+
+          // Nếu đã thử reconnect nhiều lần, cleanup hoàn toàn
+          if (connectionAttempts >= 5) {
+            console.log('Max reconnection attempts reached, cleaning up...');
+            setTimeout(() => {
+              cleanupCall();
+              onClose();
+            }, 3000);
+          } else {
+            attemptReconnection();
+          }
         }
       };
 
@@ -516,24 +705,25 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
 
         if (isCaller) {
           try {
-            console.log('Tạo offer...');
-          const offer = await peerConnection.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: !isAudioOnly
-          });
+            addDebugLog('Creating offer...');
+            const offer = await peerConnection.createOffer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: !isAudioOnly
+            });
             await peerConnection.setLocalDescription(offer);
-            
+
+            addDebugLog('Sending offer to: ' + remoteUserId);
             signalingChannel.send({
-              type: 'signal',
+              type: 'offer',
               to: remoteUserId,
               from: localUserId,
-              data: offer
+              sdp: offer.sdp
             });
           } catch (err) {
-            console.error('Lỗi khi tạo offer:', err);
+            addDebugLog('Error creating offer: ' + err.message);
             setError('Lỗi tạo cuộc gọi: ' + err.message);
-          setCallStatus('failed');
-        }
+            setCallStatus('failed');
+          }
         }
 
         setIsLoading(false);
@@ -550,66 +740,304 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
   useEffect(() => {
     initializeCall();
 
+    // Cleanup khi user đóng tab/browser
+    const handleBeforeUnload = () => {
+      cleanupCall();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     return () => {
-      console.log('VideoCall component unmounting, cleanup...');
-      stopRinging();
-      
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      
-      if (heartbeatIntervalRef.current) {
-        clearInterval(heartbeatIntervalRef.current);
-      }
-      
-      if (handlerRef.current && signalingChannel.off) {
-        signalingChannel.off('signal', handlerRef.current);
-        signalingChannel.off('heartbeat', handlerRef.current);
-      }
-      
-      if (peerConnectionRef.current) {
-        console.log('Closing peer connection...');
-        peerConnectionRef.current.close();
-      }
-      
-      if (localStreamRef.current) {
-        console.log('Stopping stream tracks...');
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-      }
+      console.log('VideoCall component unmounting...');
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      cleanupCall();
     };
   }, [isCaller, remoteUserId, localUserId, signalingChannel]);
 
   useEffect(() => {
-    if (remoteStream && remoteMediaRef.current) {
-      remoteMediaRef.current.srcObject = remoteStream;
-      
-      if (isAudioOnly) {
-        setTimeout(() => {
-          playAudioSafely(remoteMediaRef.current);
-        }, 200);
+    if (remoteStream) {
+      // Set stream cho video element
+      if (remoteVideo.current) {
+        remoteVideo.current.srcObject = remoteStream;
+        if (!isAudioOnly) {
+          remoteVideo.current.play().catch(e => console.warn('Video autoplay error:', e));
+        }
+      }
+
+      // Set stream cho audio element
+      if (remoteAudio.current) {
+        remoteAudio.current.srcObject = remoteStream;
+        if (isAudioOnly) {
+          setTimeout(() => {
+            playAudioSafely(remoteAudio.current);
+          }, 200);
+        }
       }
     }
   }, [remoteStream, isAudioOnly]);
 
   const handleClose = () => {
     console.log('User clicked close button');
-    stopRinging();
+    cleanupCall();
     onClose();
   };
 
   const handlePlayAudio = () => {
-    if (remoteMediaRef.current && isAudioOnly) {
-      playAudioSafely(remoteMediaRef.current);
+    if (remoteAudio.current && isAudioOnly) {
+      playAudioSafely(remoteAudio.current);
     }
   };
 
-  const handleAnswer = () => {
+  // Hàm khởi tạo peer connection
+  const initializePeerConnection = async () => {
+    try {
+      const configuration = {
+        iceServers: [
+          {
+            urls: [
+              'stun:stun.l.google.com:19302',
+              'stun:stun1.l.google.com:19302',
+              'stun:stun2.l.google.com:19302',
+              'stun:stun3.l.google.com:19302',
+              'stun:stun4.l.google.com:19302'
+            ]
+          }
+        ],
+        iceCandidatePoolSize: 20,
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
+        iceTransportPolicy: 'all',
+        sdpSemantics: 'unified-plan'
+      };
+
+      console.log('Tạo RTCPeerConnection với config:', configuration);
+      const peerConnection = new RTCPeerConnection(configuration);
+      peerConnectionRef.current = peerConnection;
+
+      // Thêm local stream vào peer connection nếu có
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => {
+          console.log(`Adding track to peer connection: ${track.kind}`);
+          peerConnection.addTrack(track, localStreamRef.current);
+        });
+      }
+
+      // Setup event handlers
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log('Sending ICE candidate:', event.candidate);
+          addDebugLog(`Sending ICE candidate: ${event.candidate.candidate}`);
+
+          try {
+            signalingChannel.send({
+              type: 'ice-candidate',
+              candidate: event.candidate,
+              to: remoteUserId,
+              from: localUserId
+            });
+          } catch (err) {
+            addDebugLog('Error sending ICE candidate: ' + err.message);
+          }
+        }
+      };
+
+      peerConnection.ontrack = (event) => {
+        console.log('Received remote track:', event.track.kind);
+        addDebugLog(`Received remote track: ${event.track.kind}`);
+
+        if (event.streams && event.streams[0]) {
+          remoteStreamRef.current = event.streams[0];
+
+          if (remoteVideo.current) {
+            remoteVideo.current.srcObject = event.streams[0];
+            remoteVideo.current.play().catch(e => console.warn('Remote video autoplay error:', e));
+          }
+
+          if (remoteAudio.current && isAudioOnly) {
+            remoteAudio.current.srcObject = event.streams[0];
+            playAudioSafely(remoteAudio.current);
+          }
+        }
+      };
+
+      peerConnection.onconnectionstatechange = () => {
+        console.log('Connection state changed:', peerConnection.connectionState);
+        addDebugLog(`Connection state: ${peerConnection.connectionState}`);
+
+        if (peerConnection.connectionState === 'connected') {
+          setCallStatus('connected');
+          setConnectionQuality('good');
+        } else if (peerConnection.connectionState === 'disconnected') {
+          setCallStatus('disconnected');
+          setConnectionQuality('poor');
+        } else if (peerConnection.connectionState === 'failed') {
+          setCallStatus('failed');
+          setError('Kết nối thất bại');
+        }
+      };
+
+      peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+        addDebugLog(`ICE connection state: ${peerConnection.iceConnectionState}`);
+
+        switch (peerConnection.iceConnectionState) {
+          case 'checking':
+            setConnectionQuality('checking');
+            break;
+          case 'connected':
+          case 'completed':
+            setConnectionQuality('good');
+            break;
+          case 'disconnected':
+            setConnectionQuality('poor');
+            break;
+          case 'failed':
+            setConnectionQuality('poor');
+            setError('Kết nối ICE thất bại');
+            break;
+        }
+      };
+
+      // Setup signal handler nếu chưa có
+      if (!handlerRef.current) {
+        const signalHandler = async (msg) => {
+          addDebugLog(`Received signal: ${JSON.stringify(msg)}`);
+
+          if (!peerConnection || peerConnection.connectionState === 'closed') {
+            addDebugLog('Peer connection closed, ignoring signal');
+            return;
+          }
+
+          // Handle different signal types
+          if (msg.type === 'offer' && msg.from === remoteUserId) {
+            try {
+              addDebugLog('Processing offer from: ' + msg.from);
+              await peerConnection.setRemoteDescription(new RTCSessionDescription(msg));
+              await addPendingCandidates();
+
+              const answer = await peerConnection.createAnswer();
+              await peerConnection.setLocalDescription(answer);
+
+              addDebugLog('Sending answer to: ' + remoteUserId);
+              signalingChannel.send({
+                type: 'answer',
+                to: remoteUserId,
+                from: localUserId,
+                sdp: answer.sdp
+              });
+            } catch (err) {
+              addDebugLog('Error processing offer: ' + err.message);
+              setError('Lỗi xử lý offer: ' + err.message);
+            }
+          } else if (msg.type === 'answer' && msg.from === remoteUserId) {
+            try {
+              addDebugLog('Processing answer from: ' + msg.from);
+              await peerConnection.setRemoteDescription(new RTCSessionDescription(msg));
+              await addPendingCandidates();
+            } catch (err) {
+              addDebugLog('Error processing answer: ' + err.message);
+              setError('Lỗi xử lý answer: ' + err.message);
+            }
+          } else if (msg.type === 'ice-candidate' && msg.from === remoteUserId) {
+            try {
+              if (msg.candidate) {
+                addDebugLog('Adding ICE candidate from: ' + msg.from);
+                await peerConnection.addIceCandidate(new RTCIceCandidate(msg.candidate));
+              }
+            } catch (err) {
+              addDebugLog('Error adding ICE candidate: ' + err.message);
+            }
+          } else if (msg.type === 'heartbeat' && msg.from === remoteUserId) {
+            lastHeartbeatRef.current = Date.now();
+            addDebugLog('Heartbeat received from: ' + msg.from);
+          }
+        };
+
+        handlerRef.current = signalHandler;
+        signalingChannel.on('signal', signalHandler);
+        signalingChannel.on('heartbeat', signalHandler);
+        addDebugLog('Signal handlers registered for answer');
+      }
+
+    } catch (error) {
+      console.error('❌ Error initializing peer connection:', error);
+      throw error;
+    }
+  };
+
+  const handleAnswer = async () => {
+    console.log('📞 User answered the call');
+    addDebugLog('User clicked answer button');
     setCallStatus('connecting');
     stopRinging();
+
+    try {
+      // Nếu chưa có local stream, khởi tạo
+      if (!localStreamRef.current) {
+        console.log('🎥 Getting user media for answer...');
+        const constraints = {
+          video: !isAudioOnly ? {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 }
+          } : false,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        localStreamRef.current = stream;
+
+        if (localVideo.current && !isAudioOnly) {
+          localVideo.current.srcObject = stream;
+          localVideo.current.play().catch(e => console.warn('Local video autoplay error:', e));
+        }
+      }
+
+      // Nếu chưa có peer connection, tạo mới
+      if (!peerConnectionRef.current) {
+        console.log('🔗 Creating peer connection for answer...');
+        await initializePeerConnection();
+      }
+
+      // Thêm local stream vào peer connection
+      if (localStreamRef.current && peerConnectionRef.current) {
+        localStreamRef.current.getTracks().forEach(track => {
+          peerConnectionRef.current.addTrack(track, localStreamRef.current);
+        });
+      }
+
+      // Tạo answer và gửi qua WebSocket
+      console.log('📤 Creating and sending answer...');
+      const answer = await peerConnectionRef.current.createAnswer();
+      await peerConnectionRef.current.setLocalDescription(answer);
+
+      // Gửi answer qua signaling channel
+      if (signalingChannel) {
+        signalingChannel.send({
+          type: 'answer',
+          to: remoteUserId,
+          from: localUserId,
+          sdp: answer.sdp
+        });
+        console.log('📤 Answer sent successfully');
+      } else {
+        throw new Error('Signaling channel not available');
+      }
+
+    } catch (error) {
+      console.error('❌ Error answering call:', error);
+      setError('Không thể trả lời cuộc gọi: ' + error.message);
+      setCallStatus('failed');
+      stopRinging();
+    }
   };
 
   const handleReject = () => {
-    stopRinging();
+    cleanupCall();
     onClose();
   };
 
@@ -733,12 +1161,16 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
               <div className="relative">
                 <div className="text-white text-sm mb-2 font-medium">Bạn</div>
                 <div className="relative rounded-xl overflow-hidden bg-black">
-                  <video 
-                    ref={localVideo} 
-                    autoPlay 
-                    muted 
-                    playsInline 
+                  <video
+                    ref={localVideo}
+                    autoPlay
+                    muted
+                    playsInline
                     className="w-full h-64 object-cover"
+                    onLoadedMetadata={() => console.log('📹 Local video metadata loaded')}
+                    onCanPlay={() => console.log('📹 Local video can play')}
+                    onPlay={() => console.log('📹 Local video started playing')}
+                    onError={(e) => console.error('📹 Local video error:', e)}
                   />
                   <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
                     Local
@@ -750,11 +1182,15 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
               <div className="relative">
                 <div className="text-white text-sm mb-2 font-medium">Người gọi</div>
                 <div className="relative rounded-xl overflow-hidden bg-black">
-                  <video 
-                    ref={remoteMediaRef} 
-                    autoPlay 
-                    playsInline 
+                  <video
+                    ref={remoteVideo}
+                    autoPlay
+                    playsInline
                     className="w-full h-64 object-cover"
+                    onLoadedMetadata={() => console.log('🎥 Remote video metadata loaded')}
+                    onCanPlay={() => console.log('🎥 Remote video can play')}
+                    onPlay={() => console.log('🎥 Remote video started playing')}
+                    onError={(e) => console.error('🎥 Remote video error:', e)}
                   />
                   <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
                     Remote
@@ -766,22 +1202,40 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
             /* Audio Only Mode */
             <div className="col-span-1 lg:col-span-2">
               <div className="text-center">
-                <div className="w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <div className={`relative w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6 ${
+                  iceConnectionState === 'connected' ? 'animate-pulse' : ''
+                }`}>
                   <svg className="w-16 h-16 text-white" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0010 2a7 7 0 00-1 13.93V17a1 1 0 11-2 0v-3.07A7.001 7.001 0 010 10a1 1 0 012 0 5 5 0 0010 0 1 1 0 012 0 7.001 7.001 0 00-1 3.93V17a1 1 0 11-2 0v-3.07z" clipRule="evenodd"/>
                   </svg>
-            </div>
+                  {/* Connection indicator */}
+                  {iceConnectionState === 'connected' && (
+                    <div className="absolute -bottom-2 -right-2 w-6 h-6 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
+                      <div className="w-2 h-2 bg-white rounded-full"></div>
+                    </div>
+                  )}
+                </div>
                 
-                <div className="text-white text-lg font-semibold mb-2">Cuộc gọi âm thanh</div>
-                <div className="text-gray-300 text-sm mb-4">Đang kết nối âm thanh...</div>
+                <div className="text-white text-xl font-semibold mb-2">Cuộc gọi âm thanh</div>
+                <div className="text-gray-300 text-sm mb-6">
+                  {iceConnectionState === 'connected' ? 'Đã kết nối' :
+                   iceConnectionState === 'connecting' ? 'Đang kết nối...' :
+                   'Đang thiết lập kết nối...'}
+                </div>
                 
             <audio
-              ref={remoteMediaRef}
+              ref={remoteAudio}
               autoPlay
               controls
                   className="w-full max-w-md mx-auto"
                   style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 12 }}
-                  onLoadedMetadata={handlePlayAudio}
+                  onLoadedMetadata={() => {
+                    console.log('🔊 Remote audio metadata loaded');
+                    handlePlayAudio();
+                  }}
+                  onCanPlay={() => console.log('🔊 Remote audio can play')}
+                  onPlay={() => console.log('🔊 Remote audio started playing')}
+                  onError={(e) => console.error('🔊 Remote audio error:', e)}
             />
         
         {isConnected && (
@@ -813,16 +1267,37 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
           </div>
         )}
 
+        {/* Debug Log - Chỉ hiển thị trong development */}
+        {process.env.NODE_ENV === 'development' && debugLog.length > 0 && (
+          <div className="bg-gray-800/50 border border-gray-600 rounded-lg p-3 mb-4 max-h-32 overflow-y-auto">
+            <div className="text-gray-300 font-medium mb-2 text-sm">Debug Log:</div>
+            {debugLog.map((log, idx) => (
+              <div key={idx} className="text-xs text-gray-400 font-mono">{log}</div>
+            ))}
+          </div>
+        )}
+
         {/* Call Controls */}
-        <div className="flex justify-center space-x-4">
-          <button 
-            onClick={handleClose}
-            className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-full font-semibold transition-all duration-200 transform hover:scale-105 flex items-center"
+        <div className="flex justify-center space-x-6">
+          <button
+            onClick={handlePlayAudio}
+            className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full font-medium transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-105"
+            title="Phát âm thanh test"
           >
-            <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.617.824L4.5 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.5l3.883-3.824z" clipRule="evenodd"/>
+              <path d="M14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.983 5.983 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.984 3.984 0 00-1.172-2.828 1 1 0 010-1.415z"/>
+            </svg>
+          </button>
+
+          <button
+            onClick={handleClose}
+            className="bg-red-600 hover:bg-red-700 text-white p-4 rounded-full font-medium transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-105"
+            title="Kết thúc cuộc gọi"
+          >
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/>
             </svg>
-            Kết thúc
           </button>
         </div>
       </div>

@@ -306,26 +306,56 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
     console.log('✅ Cleanup completed');
   };
 
-  // Reconnection logic với exponential backoff
-  const attemptReconnection = () => {
-    if (connectionAttempts < 5) {
-      const delay = Math.min(2000 * Math.pow(2, connectionAttempts), 30000); // Max 30s
-      console.log(`🔄 Attempting reconnection ${connectionAttempts + 1}/5 in ${delay}ms`);
-      setConnectionAttempts(prev => prev + 1);
-      setCallStatus('connecting');
-      
-      // Cleanup existing connection
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-      }
-      
-      // Retry with exponential backoff
-      reconnectTimeoutRef.current = setTimeout(() => {
-        initializeCall();
-      }, delay);
-    } else {
+  // Cải thiện reconnection logic với cleanup tốt hơn
+  const attemptReconnection = async () => {
+    if (connectionAttempts >= 5) {
       setError('Không thể kết nối sau nhiều lần thử. Vui lòng thử lại sau.');
       setCallStatus('failed');
+      return;
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, connectionAttempts), 15000); // Max 15s
+    console.log(`🔄 Attempting reconnection ${connectionAttempts + 1}/5 in ${delay}ms`);
+    addDebugLog(`Reconnection attempt ${connectionAttempts + 1}/5 in ${delay}ms`);
+
+    setConnectionAttempts(prev => prev + 1);
+    setCallStatus('reconnecting');
+
+    try {
+      // Cleanup existing connection hoàn toàn
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.onicecandidate = null;
+        peerConnectionRef.current.oniceconnectionstatechange = null;
+        peerConnectionRef.current.ontrack = null;
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+
+      // Clear pending candidates
+      pendingCandidatesRef.current = [];
+
+      // Wait before reconnecting
+      await new Promise(resolve => setTimeout(resolve, delay));
+
+      // Reinitialize connection
+      await initializePeerConnection();
+
+      // Restart the call process
+      if (isInitiator) {
+        await createOffer();
+      }
+
+    } catch (error) {
+      console.error('Reconnection failed:', error);
+      addDebugLog(`Reconnection failed: ${error.message}`);
+
+      // Try again if we haven't exceeded max attempts
+      if (connectionAttempts < 4) {
+        setTimeout(() => attemptReconnection(), 2000);
+      } else {
+        setError('Kết nối thất bại hoàn toàn. Vui lòng thử lại.');
+        setCallStatus('failed');
+      }
     }
   };
 
@@ -776,6 +806,32 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
     }
   }, [remoteStream, isAudioOnly]);
 
+  // Enhanced connection monitoring
+  useEffect(() => {
+    if (callStatus === 'connected' && socket) {
+      const connectionMonitor = setInterval(() => {
+        // Check WebRTC connection state
+        if (peerConnectionRef.current) {
+          const state = peerConnectionRef.current.iceConnectionState;
+          if (state === 'disconnected' || state === 'failed') {
+            console.warn('WebRTC connection unstable, attempting recovery...');
+            addDebugLog(`WebRTC state: ${state}, attempting recovery`);
+            attemptReconnection();
+          }
+        }
+
+        // Check socket connection
+        if (!socket.connected) {
+          console.warn('Socket disconnected, attempting reconnection...');
+          addDebugLog('Socket disconnected');
+          socket.connect();
+        }
+      }, 3000); // Check every 3 seconds
+
+      return () => clearInterval(connectionMonitor);
+    }
+  }, [callStatus, socket, attemptReconnection]);
+
   const handleClose = () => {
     console.log('User clicked close button');
     cleanupCall();
@@ -793,17 +849,33 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
     try {
       const configuration = {
         iceServers: [
+          // Google STUN servers
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' },
+          // Thêm STUN servers khác để backup
+          { urls: 'stun:stun.services.mozilla.com' },
+          { urls: 'stun:stun.ekiga.net' },
+          // TURN servers miễn phí cho NAT traversal
           {
-            urls: [
-              'stun:stun.l.google.com:19302',
-              'stun:stun1.l.google.com:19302',
-              'stun:stun2.l.google.com:19302',
-              'stun:stun3.l.google.com:19302',
-              'stun:stun4.l.google.com:19302'
-            ]
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
           }
         ],
-        iceCandidatePoolSize: 20,
+        iceCandidatePoolSize: 30,
         bundlePolicy: 'max-bundle',
         rtcpMuxPolicy: 'require',
         iceTransportPolicy: 'all',
@@ -823,20 +895,58 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
       }
 
       // Setup event handlers
+      // Enhanced ICE candidate handler với retry logic
       peerConnection.onicecandidate = (event) => {
+        if (!peerConnection || peerConnection.connectionState === 'closed') {
+          return;
+        }
+
         if (event.candidate) {
           console.log('Sending ICE candidate:', event.candidate);
           addDebugLog(`Sending ICE candidate: ${event.candidate.candidate}`);
 
-          try {
-            signalingChannel.send({
-              type: 'ice-candidate',
-              candidate: event.candidate,
-              to: remoteUserId,
-              from: localUserId
+          // Retry logic cho ICE candidate sending
+          const sendCandidate = (retries = 3) => {
+            try {
+              signalingChannel.send({
+                type: 'ice-candidate',
+                candidate: event.candidate,
+                to: remoteUserId,
+                from: localUserId
+              });
+            } catch (err) {
+              addDebugLog('Error sending ICE candidate: ' + err.message);
+
+              if (retries > 0) {
+                setTimeout(() => sendCandidate(retries - 1), 1000);
+              } else {
+                // Store failed candidate for later retry
+                pendingCandidatesRef.current.push(event.candidate);
+              }
+            }
+          };
+
+          sendCandidate();
+        } else {
+          console.log('ICE gathering completed');
+          addDebugLog('ICE gathering completed');
+
+          // Retry sending any pending candidates
+          if (pendingCandidatesRef.current.length > 0) {
+            addDebugLog(`Retrying ${pendingCandidatesRef.current.length} pending candidates`);
+            pendingCandidatesRef.current.forEach(candidate => {
+              try {
+                signalingChannel.send({
+                  type: 'ice-candidate',
+                  candidate,
+                  to: remoteUserId,
+                  from: localUserId
+                });
+              } catch (error) {
+                console.error('Error retrying candidate:', error);
+              }
             });
-          } catch (err) {
-            addDebugLog('Error sending ICE candidate: ' + err.message);
+            pendingCandidatesRef.current = [];
           }
         }
       };
@@ -876,24 +986,55 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
         }
       };
 
+      // Cải thiện ICE connection state handling với auto-reconnect
       peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
-        addDebugLog(`ICE connection state: ${peerConnection.iceConnectionState}`);
+        const state = peerConnection.iceConnectionState;
+        console.log('ICE connection state:', state);
+        addDebugLog(`ICE connection state: ${state}`);
+        setIceConnectionState(state);
 
-        switch (peerConnection.iceConnectionState) {
+        switch (state) {
           case 'checking':
             setConnectionQuality('checking');
+            setCallStatus('connecting');
             break;
           case 'connected':
           case 'completed':
             setConnectionQuality('good');
+            setCallStatus('connected');
+            setConnectionAttempts(0); // Reset attempts on success
             break;
           case 'disconnected':
             setConnectionQuality('poor');
+            setCallStatus('reconnecting');
+            addDebugLog('Connection disconnected, attempting to reconnect...');
+            // Thử reconnect sau 2 giây
+            setTimeout(() => {
+              if (peerConnection.iceConnectionState === 'disconnected') {
+                peerConnection.restartIce();
+              }
+            }, 2000);
             break;
           case 'failed':
             setConnectionQuality('poor');
-            setError('Kết nối ICE thất bại');
+            setCallStatus('failed');
+            addDebugLog('ICE connection failed, attempting full reconnection...');
+
+            // Thử reconnect với delay tăng dần
+            const attempts = connectionAttempts + 1;
+            setConnectionAttempts(attempts);
+
+            if (attempts < 5) {
+              const delay = Math.min(1000 * Math.pow(2, attempts), 10000); // Exponential backoff
+              setTimeout(() => {
+                attemptReconnection();
+              }, delay);
+            } else {
+              setError('Không thể kết nối. Vui lòng thử lại sau.');
+            }
+            break;
+          case 'closed':
+            setCallStatus('ended');
             break;
         }
       };
@@ -1218,9 +1359,32 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
                 
                 <div className="text-white text-xl font-semibold mb-2">Cuộc gọi âm thanh</div>
                 <div className="text-gray-300 text-sm mb-6">
-                  {iceConnectionState === 'connected' ? 'Đã kết nối' :
-                   iceConnectionState === 'connecting' ? 'Đang kết nối...' :
-                   'Đang thiết lập kết nối...'}
+                  {iceConnectionState === 'connected' ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <span>Đã kết nối - Chất lượng: {connectionQuality === 'good' ? 'Tốt' : connectionQuality === 'poor' ? 'Kém' : 'Đang kiểm tra'}</span>
+                    </div>
+                  ) : iceConnectionState === 'connecting' || iceConnectionState === 'checking' ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                      <span>Đang kết nối...</span>
+                    </div>
+                  ) : iceConnectionState === 'disconnected' ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
+                      <span>Mất kết nối - Đang thử lại...</span>
+                    </div>
+                  ) : iceConnectionState === 'failed' ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                      <span>Kết nối thất bại - Đang khôi phục...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      <span>Đang thiết lập kết nối...</span>
+                    </div>
+                  )}
                 </div>
                 
             <audio

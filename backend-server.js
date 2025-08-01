@@ -121,9 +121,22 @@ io.on('connection', (socket) => {
     socket.leave(roomId);
   });
 
-  // Handle heartbeat for connection monitoring
+  // Enhanced heartbeat for connection monitoring
   socket.on('heartbeat', () => {
-    socket.emit('heartbeat-response');
+    socket.emit('heartbeat-response', { timestamp: Date.now() });
+  });
+
+  // Handle connection quality reporting
+  socket.on('connection-quality', (data) => {
+    const { roomId, quality, metrics } = data;
+    console.log(`Connection quality in room ${roomId}: ${quality}`, metrics);
+
+    // Broadcast quality info to other users in room
+    socket.to(roomId).emit('peer-connection-quality', {
+      quality,
+      metrics,
+      from: socket.id
+    });
   });
 
   // Handle disconnect

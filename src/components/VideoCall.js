@@ -341,8 +341,9 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
       await initializePeerConnection();
 
       // Restart the call process
-      if (isInitiator) {
-        await createOffer();
+      if (isCaller) {
+        // Reinitialize as caller
+        await initializeCall();
       }
 
     } catch (error) {
@@ -808,7 +809,7 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
 
   // Enhanced connection monitoring
   useEffect(() => {
-    if (callStatus === 'connected' && socket) {
+    if (callStatus === 'connected' && signalingChannel) {
       const connectionMonitor = setInterval(() => {
         // Check WebRTC connection state
         if (peerConnectionRef.current) {
@@ -820,17 +821,20 @@ export default function VideoCall({ signalingChannel, onClose, isCaller, remoteU
           }
         }
 
-        // Check socket connection
-        if (!socket.connected) {
-          console.warn('Socket disconnected, attempting reconnection...');
-          addDebugLog('Socket disconnected');
-          socket.connect();
+        // Check signaling channel connection
+        if (signalingChannel && typeof signalingChannel.connected !== 'undefined' && !signalingChannel.connected) {
+          console.warn('Signaling channel disconnected, attempting reconnection...');
+          addDebugLog('Signaling channel disconnected');
+          // Attempt to reconnect signaling channel if it has a connect method
+          if (typeof signalingChannel.connect === 'function') {
+            signalingChannel.connect();
+          }
         }
       }, 3000); // Check every 3 seconds
 
       return () => clearInterval(connectionMonitor);
     }
-  }, [callStatus, socket, attemptReconnection]);
+  }, [callStatus, signalingChannel, attemptReconnection]);
 
   const handleClose = () => {
     console.log('User clicked close button');

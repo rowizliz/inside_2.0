@@ -7,8 +7,9 @@ const config = {
     environment: 'development'
   },
   production: {
-    socketUrl: process.env.REACT_APP_SOCKET_URL_PROD || 'https://inside-backend.up.railway.app',
-    apiUrl: process.env.REACT_APP_SOCKET_URL_PROD || 'https://inside-backend.up.railway.app',
+    // Socket.IO trên Railway (wss) và API (https) cùng domain
+    socketUrl: 'wss://inside-new-signal.up.railway.app',
+    apiUrl: 'https://inside-new-signal.up.railway.app',
     environment: 'production'
   }
 };

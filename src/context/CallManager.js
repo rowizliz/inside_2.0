@@ -214,12 +214,42 @@ export const CallManagerProvider = ({ children }) => {
         inRoomRef.current = true;
       }
 
-      // Lấy media stream
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      });
-      console.log('📹 Got local stream:', stream.id);
+      // Lấy media stream với constraints thân thiện iOS + fallback
+      let stream;
+      const tryGetUserMedia = async () => {
+        // Ưu tiên camera trước (selfie) và micro
+        const primary = { audio: true, video: { facingMode: 'user' } };
+        try {
+          return await navigator.mediaDevices.getUserMedia(primary);
+        } catch (e) {
+          // Nếu lỗi do deviceId/facingMode không khả dụng hoặc NotFound → fallback video:any
+          if (e && (e.name === 'OverconstrainedError' || e.name === 'NotFoundError' || e.name === 'AbortError')) {
+            console.warn('⚠️ Primary constraints failed, retrying with generic {audio:true, video:true}', e);
+            return await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+          }
+          // Nếu bị chặn quyền, ném lại để nhánh catch ngoài xử lý thông báo
+          throw e;
+        }
+      };
+
+      try {
+        stream = await tryGetUserMedia();
+      } catch (e) {
+        // Thử xóa deviceId đã cache (nếu có) và thử lại lần cuối
+        try {
+          console.warn('⚠️ Retry without any cached deviceId, using minimal audio-only as last resort');
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'user' } });
+        } catch (e2) {
+          // Thử audio-only để tránh chặn camera trên iOS Private
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          } catch (e3) {
+            throw e; // trả về lỗi gốc để xử lý phía dưới
+          }
+        }
+      }
+
+      console.log('📹 Got local stream:', stream && stream.id);
 
       setLocalStream(stream);
 
@@ -299,9 +329,13 @@ export const CallManagerProvider = ({ children }) => {
       
     } catch (error) {
       console.error('❌ Error initializing WebRTC:', error);
-      if (error.name === 'NotAllowedError') {
-        // Người dùng từ chối quyền truy cập
-        alert('Vui lòng cấp quyền truy cập camera và microphone để thực hiện cuộc gọi video.');
+      // Thông điệp thân thiện cho các lỗi phổ biến trên mobile
+      if (error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) {
+        alert('Trình duyệt đã chặn quyền Camera/Micro. Vui lòng vào Settings/Safari → Website → cấp quyền Camera & Micro cho inside-app.vercel.app, sau đó tải lại trang.');
+      } else if (error && (error.name === 'NotFoundError' || error.message?.includes('Requested device not found'))) {
+        alert('Không tìm thấy thiết bị Camera/Micro phù hợp. Hãy kiểm tra lại quyền truy cập, tắt chế độ ẩn danh/Private hoặc thử cắm tai nghe có mic.');
+      } else {
+        alert('Không thể khởi tạo cuộc gọi do lỗi thiết bị. Vui lòng thử lại.');
       }
       connectingRef.current = false;
       endCall();
@@ -374,11 +408,13 @@ export const CallManagerProvider = ({ children }) => {
       console.log('🔌 Initializing socket connection...');
       console.log('👤 Current user ID:', currentUser.id);
       
-      // Kết nối đến signaling server
-      const socket = io('http://localhost:3000', {
-        transports: ['websocket', 'polling'],
+      // Kết nối đến signaling server – ép dùng wss và path chuẩn cho iOS
+      const socket = io('wss://inside-new-signal.up.railway.app', {
+        path: '/socket.io',
+        transports: ['websocket'], // ép WS để tránh long-poll trên iOS
         timeout: 20000,
         forceNew: true,
+        withCredentials: true,
         reconnection: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,

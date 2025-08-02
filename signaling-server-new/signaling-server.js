@@ -8,7 +8,7 @@ const server = http.createServer(app);
 
 // Cấu hình CORS cho Express
 app.use(cors({
-  origin: ["http://localhost:3000", "http://localhost:3001", "https://your-domain.com"],
+  origin: ["http://localhost:3000", "http://localhost:3001", "https://inside-app.vercel.app", "https://inside-new-signal.up.railway.app"],
   methods: ["GET", "POST"],
   credentials: true
 }));
@@ -16,7 +16,7 @@ app.use(cors({
 // Cấu hình Socket.IO với CORS
 const io = socketIo(server, {
   cors: {
-    origin: ["http://localhost:3000", "http://localhost:3001", "https://your-domain.com"],
+    origin: ["http://localhost:3000", "http://localhost:3001", "https://inside-app.vercel.app", "https://inside-new-signal.up.railway.app"],
     methods: ["GET", "POST"],
     credentials: true
   },

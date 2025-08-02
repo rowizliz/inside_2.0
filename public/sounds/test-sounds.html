@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Sound Files</title>
+</head>
+<body>
+    <h1>Test Sound Files</h1>
+    <p>Các file âm thanh cần thiết:</p>
+    <ul>
+        <li>ringtone.mp3 - Nhạc chuông khi có cuộc gọi đến</li>
+        <li>connected.mp3 - Âm thanh khi kết nối thành công</li>
+        <li>busy.mp3 - Âm thanh khi bận/từ chối</li>
+        <li>ended.mp3 - Âm thanh khi kết thúc cuộc gọi</li>
+    </ul>
+    
+    <p>Bạn có thể download các file âm thanh miễn phí từ:</p>
+    <ul>
+        <li><a href="https://freesound.org/" target="_blank">FreeSound.org</a></li>
+        <li><a href="https://www.zapsplat.com/" target="_blank">Zapsplat</a></li>
+        <li><a href="https://mixkit.co/free-sound-effects/" target="_blank">Mixkit</a></li>
+    </ul>
+    
+    <p>Hoặc sử dụng các âm thanh mặc định của hệ thống:</p>
+    <button onclick="playDefaultSound('ringtone')">Test Ringtone</button>
+    <button onclick="playDefaultSound('connected')">Test Connected</button>
+    <button onclick="playDefaultSound('busy')">Test Busy</button>
+    <button onclick="playDefaultSound('ended')">Test Ended</button>
+    
+    <script>
+        // Tạo âm thanh mẫu bằng Web Audio API
+        function playDefaultSound(type) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            switch(type) {
+                case 'ringtone':
+                    // Nhạc chuông - pattern lặp lại
+                    oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+                    oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
+                    oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime + 0.2); // C5
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.3);
+                    break;
+                    
+                case 'connected':
+                    // Âm thanh kết nối - tăng dần
+                    oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
+                    oscillator.frequency.linearRampToValueAtTime(800, audioContext.currentTime + 0.2);
+                    gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.2);
+                    break;
+                    
+                case 'busy':
+                    // Âm thanh bận - beep ngắn
+                    oscillator.frequency.setValueAtTime(480, audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.1);
+                    break;
+                    
+                case 'ended':
+                    // Âm thanh kết thúc - giảm dần
+                    oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+                    oscillator.frequency.linearRampToValueAtTime(200, audioContext.currentTime + 0.3);
+                    gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.3);
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.3);
+                    break;
+            }
+        }
+    </script>
+</body>
+</html>

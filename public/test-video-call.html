@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Video Call</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://unpkg.com/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        video { width: 300px; height: 200px; border: 1px solid #ccc; margin: 10px; }
+        button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+        #status { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+        #logs { margin: 10px 0; padding: 10px; background: #f9f9f9; height: 200px; overflow-y: scroll; }
+    </style>
+</head>
+<body>
+    <h1>Test Video Call</h1>
+    
+    <div>
+        <label>Room ID: </label>
+        <input type="text" id="roomId" value="test123" />
+        <button onclick="startCall()">Start Call</button>
+        <button onclick="endCall()">End Call</button>
+    </div>
+    
+    <div id="status">Ready to start call</div>
+    
+    <div>
+        <h3>Local Video</h3>
+        <video id="localVideo" autoplay muted></video>
+        
+        <h3>Remote Video</h3>
+        <video id="remoteVideo" autoplay></video>
+    </div>
+    
+    <div id="logs"></div>
+    
+    <script>
+        let socket = null;
+        let peer = null;
+        let localStream = null;
+        const userId = 'user-' + Math.random().toString(36).substr(2, 9);
+        
+        const statusDiv = document.getElementById('status');
+        const logsDiv = document.getElementById('logs');
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            logsDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+            console.log(message);
+        }
+        
+        function setStatus(message) {
+            statusDiv.innerHTML = message;
+            log('Status: ' + message);
+        }
+        
+        async function startCall() {
+            try {
+                const roomId = document.getElementById('roomId').value;
+                setStatus('Getting camera...');
+                
+                // Get user media
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+                
+                localVideo.srcObject = localStream;
+                log('✅ Got local stream');
+                
+                setStatus('Connecting to server...');
+                
+                // Connect to signaling server
+                socket = io('http://localhost:3001', {
+                    transports: ['websocket', 'polling'],
+                    timeout: 5000
+                });
+                
+                socket.on('connect', () => {
+                    log('✅ Connected to signaling server');
+                    setStatus('Joining room...');
+                    socket.emit('join-room', {
+                        roomId,
+                        userId,
+                        name: 'Test User'
+                    });
+                });
+                
+                socket.on('connect_error', (error) => {
+                    log('❌ Connection error: ' + error.message);
+                    setStatus('Connection failed');
+                });
+                
+                socket.on('user-joined', (data) => {
+                    log('👤 User joined - creating peer as initiator');
+                    setStatus('Creating connection...');
+                    createPeer(true);
+                });
+                
+                socket.on('user-already-in-room', (data) => {
+                    log('👥 User already in room - creating peer as receiver');
+                    setStatus('Joining connection...');
+                    createPeer(false);
+                });
+                
+                socket.on('signal', (data) => {
+                    log('📡 Received signal: ' + data.signal.type);
+                    if (peer) {
+                        peer.signal(data.signal);
+                    }
+                });
+                
+                socket.on('user-left', (data) => {
+                    log('👋 User left');
+                    setStatus('User disconnected');
+                    if (remoteVideo.srcObject) {
+                        remoteVideo.srcObject = null;
+                    }
+                });
+                
+            } catch (error) {
+                log('❌ Error: ' + error.message);
+                setStatus('Error: ' + error.message);
+            }
+        }
+        
+        function createPeer(initiator) {
+            try {
+                log(`🔧 Creating peer - initiator: ${initiator}`);
+                
+                peer = new SimplePeer({
+                    initiator,
+                    trickle: true,
+                    stream: localStream,
+                    config: {
+                        iceServers: [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:stun1.l.google.com:19302' }
+                        ]
+                    }
+                });
+                
+                peer.on('signal', (data) => {
+                    log('📡 Sending signal: ' + data.type);
+                    if (socket && socket.connected) {
+                        socket.emit('signal', {
+                            roomId: document.getElementById('roomId').value,
+                            signal: data,
+                            userId
+                        });
+                    }
+                });
+                
+                peer.on('connect', () => {
+                    log('✅ Peer connected!');
+                    setStatus('Connected!');
+                });
+                
+                peer.on('stream', (remoteStream) => {
+                    log('📺 Received remote stream');
+                    setStatus('Receiving video!');
+                    remoteVideo.srcObject = remoteStream;
+                });
+                
+                peer.on('error', (error) => {
+                    log('❌ Peer error: ' + error.message);
+                    setStatus('Peer error: ' + error.message);
+                });
+                
+                peer.on('close', () => {
+                    log('🔌 Peer connection closed');
+                    setStatus('Connection closed');
+                });
+                
+            } catch (error) {
+                log('❌ Error creating peer: ' + error.message);
+                setStatus('Error creating peer');
+            }
+        }
+        
+        function endCall() {
+            log('🔚 Ending call');
+            
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+                localVideo.srcObject = null;
+            }
+            
+            if (peer) {
+                peer.destroy();
+                peer = null;
+            }
+            
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+            
+            remoteVideo.srcObject = null;
+            setStatus('Call ended');
+        }
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', endCall);
+    </script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "name": "inside-backend",
+  "version": "1.0.0",
+  "description": "Socket.io backend server for Inside video call app",
+  "main": "backend-server.js",
+  "scripts": {
+    "start": "node backend-server.js",
+    "dev": "nodemon backend-server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.5",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "socket.io",
+    "webrtc",
+    "video-call",
+    "signaling-server"
+  ],
+  "author": "rowizliz",
+  "license": "MIT"
+}

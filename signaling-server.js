@@ -1,66 +1,173 @@
-const WebSocket = require('ws');
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const cors = require('cors');
 
-const wss = new WebSocket.Server({ 
-  port: process.env.PORT || 8080,
-  // Thêm CORS headers
-  perMessageDeflate: false,
-  clientTracking: true
+const app = express();
+const server = http.createServer(app);
+
+// Configure CORS for Socket.IO
+const io = socketIo(server, {
+  cors: {
+    origin: [
+      "http://localhost:3000",
+      "https://inside-video-call-git-main-macbookpro2019s-projects.vercel.app",
+      "https://inside-video-call.vercel.app",
+      /\.vercel\.app$/,
+      /localhost:\d+$/
+    ],
+    methods: ["GET", "POST"],
+    credentials: true
+  }
 });
 
-const users = {};
+// Enable CORS for Express
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://inside-video-call-git-main-macbookpro2019s-projects.vercel.app",
+    "https://inside-video-call.vercel.app",
+    /\.vercel\.app$/,
+    /localhost:\d+$/
+  ],
+  credentials: true
+}));
 
-wss.on('connection', function connection(ws, req) {
-  console.log('New WebSocket connection from:', req.socket.remoteAddress);
-  console.log('Headers:', req.headers);
-  
-  ws.on('message', function incoming(message) {
-    let data;
-    try {
-      data = JSON.parse(message);
-      console.log('Received message:', data.type, 'from:', data.userId || 'unknown');
-    } catch (e) {
-      console.error('Error parsing message:', e);
-      return;
-    }
+app.use(express.json());
 
-    // Đăng ký userId cho mỗi kết nối
-    if (data.type === 'register' && data.userId) {
-      ws.userId = data.userId;
-      users[data.userId] = ws;
-      console.log('User registered:', data.userId);
-      console.log('Active users:', Object.keys(users));
-      return;
-    }
+// Store rooms and users
+const rooms = new Map();
+const users = new Map();
 
-    // Gửi signaling message tới user đích
-    if (data.to && users[data.to]) {
-      console.log('Forwarding message to:', data.to);
-      users[data.to].send(JSON.stringify({ ...data, from: ws.userId }));
-    } else if (data.to) {
-      console.log('User not found:', data.to);
-    }
-  });
-
-  ws.on('close', function () {
-    if (ws.userId && users[ws.userId]) {
-      delete users[ws.userId];
-      console.log('User disconnected:', ws.userId);
-      console.log('Active users:', Object.keys(users));
-    }
-    console.log('WebSocket connection closed');
-  });
-
-  ws.on('error', function (error) {
-    console.error('WebSocket error:', error);
-  });
-
-  ws.on('ping', function () {
-    console.log('Received ping');
-  });
-
-  ws.on('pong', function () {
-    console.log('Received pong');
+// Basic route
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Video Call Signaling Server',
+    status: 'running',
+    rooms: rooms.size,
+    users: users.size
   });
 });
 
-console.log('WebSocket signaling server running on port', process.env.PORT || 8080); 
+// Stats endpoint
+app.get('/stats', (req, res) => {
+  const roomStats = Array.from(rooms.entries()).map(([roomId, room]) => ({
+    roomId,
+    users: room.users.length,
+    userList: room.users.map(u => ({ id: u.userId, name: u.name }))
+  }));
+
+  res.json({
+    totalRooms: rooms.size,
+    totalUsers: users.size,
+    rooms: roomStats
+  });
+});
+
+io.on('connection', (socket) => {
+  console.log(`🔌 User connected: ${socket.id}`);
+
+  socket.on('join-room', (data) => {
+    const { roomId, userId, name } = data;
+    console.log(`👤 User ${userId} (${name || 'Unknown'}) joining room: ${roomId}`);
+
+    // Store user info
+    users.set(socket.id, { userId, name, roomId });
+
+    // Join socket room
+    socket.join(roomId);
+
+    // Initialize room if doesn't exist
+    if (!rooms.has(roomId)) {
+      rooms.set(roomId, { users: [] });
+    }
+
+    const room = rooms.get(roomId);
+
+    // Check if user already in room
+    const existingUser = room.users.find(u => u.userId === userId);
+    if (!existingUser) {
+      room.users.push({ userId, name, socketId: socket.id });
+    }
+
+    console.log(`📊 Room ${roomId} now has ${room.users.length} users`);
+
+    // Notify others in room
+    socket.to(roomId).emit('user-joined', { userId, name });
+
+    // If there are already users in room, notify this user
+    if (room.users.length > 1) {
+      socket.emit('user-already-in-room', {
+        users: room.users.filter(u => u.userId !== userId)
+      });
+    }
+  });
+
+  socket.on('signal', (data) => {
+    const { roomId, signal, userId } = data;
+    console.log(`📡 Relaying signal from ${userId} in room ${roomId}`);
+
+    // Relay signal to all other users in room
+    socket.to(roomId).emit('signal', { signal, userId });
+  });
+
+  socket.on('leave-room', (data) => {
+    const { roomId, userId } = data;
+    console.log(`👋 User ${userId} leaving room: ${roomId}`);
+
+    handleUserLeave(socket, roomId, userId);
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔌 User disconnected: ${socket.id}`);
+
+    const user = users.get(socket.id);
+    if (user) {
+      handleUserLeave(socket, user.roomId, user.userId);
+    }
+  });
+});
+
+function handleUserLeave(socket, roomId, userId) {
+  if (!roomId) return;
+
+  // Remove from room
+  const room = rooms.get(roomId);
+  if (room) {
+    room.users = room.users.filter(u => u.userId !== userId);
+
+    // If room is empty, delete it
+    if (room.users.length === 0) {
+      rooms.delete(roomId);
+      console.log(`🗑️ Deleted empty room: ${roomId}`);
+    } else {
+      console.log(`📊 Room ${roomId} now has ${room.users.length} users`);
+    }
+  }
+
+  // Remove user
+  users.delete(socket.id);
+
+  // Notify others in room
+  socket.to(roomId).emit('user-left', { userId });
+
+  // Leave socket room
+  socket.leave(roomId);
+}
+
+const PORT = process.env.PORT || 3001;
+
+server.listen(PORT, () => {
+  console.log(`🚀 Signaling server running on port ${PORT}`);
+  console.log(`📊 Stats available at: http://localhost:${PORT}/stats`);
+  console.log(`🎥 Ready for video calls!`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 Shutting down signaling server...');
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
+});

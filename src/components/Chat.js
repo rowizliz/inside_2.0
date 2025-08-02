@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  ChatBubbleLeftRightIcon, 
-  PaperAirplaneIcon, 
-  PlusIcon, 
+import {
+  ChatBubbleLeftRightIcon,
+  PaperAirplaneIcon,
+  PlusIcon,
   UserGroupIcon,
   PencilIcon,
   CameraIcon,
@@ -11,10 +11,10 @@ import {
   ArrowLeftIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../context/AuthContext';
+import { useCallManager } from '../context/CallManager';
 import supabase from '../supabase';
 import VoiceRecorder from './VoiceRecorder';
 import VoicePlayer from './VoicePlayer';
-import VideoCall from './VideoCall';
 
 
 export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts }) {
@@ -61,8 +61,8 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  const [videoCallPopup, setVideoCallPopup] = useState(null); // { isCaller, remoteUserId, channelId }
-  const videoChannelRef = useRef();
+  // Sử dụng CallManager
+  const { startOutgoingCall } = useCallManager();
 
   // Audio setup
   useEffect(() => {
@@ -1644,146 +1644,56 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
     }
   };
 
-  // Tạo signaling channel (Supabase Realtime)
-  useEffect(() => {
-    if (!currentUser) return;
-    if (!currentChannel) return;
-    const channelId = currentChannel.id;
-    console.log('🔄 Setting up video call channel for:', channelId);
 
-    const channel = supabase.channel('video-call-' + channelId);
-    videoChannelRef.current = channel;
 
-    channel.on('broadcast', { event: 'signal' }, payload => {
-      console.log('📡 Received broadcast signal:', payload);
-      const data = payload.payload;
-
-      // Dispatch all signals to VideoCall component
-      window.dispatchEvent(new CustomEvent('video-signal', { detail: data }));
-
-      if (data.type === 'call-request' && data.to === currentUser.id) {
-        console.log('📞 Incoming call from:', data.from);
-        setVideoCallPopup({ isCaller: false, remoteUserId: data.from, channelId });
-      }
-      if (data.type === 'call-cancel' && data.to === currentUser.id) {
-        console.log('❌ Call cancelled by:', data.from);
-        setVideoCallPopup(null);
-      }
-    });
-
-    channel.subscribe((status) => {
-      console.log('📡 Channel subscription status:', status);
-      if (status === 'SUBSCRIBED') {
-        console.log('✅ Video channel ready for communication');
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('❌ Video channel subscription error');
-      }
-    });
-
-    return () => {
-      console.log('🔄 Cleaning up video call channel');
-      supabase.removeChannel(channel);
-    };
-  }, [currentUser, currentChannel]);
-
-  // Signaling channel object
-  const signalingChannel = {
-    send: msg => {
-      console.log('📤 Sending signal:', msg);
-      if (!videoChannelRef.current) {
-        console.error('❌ Video channel not available');
-        return;
-      }
-
-      // Kiểm tra trạng thái channel
-      if (videoChannelRef.current.state !== 'joined') {
-        console.warn('⚠️ Channel not joined yet, state:', videoChannelRef.current.state);
-        // Thử subscribe lại nếu cần
-        if (videoChannelRef.current.state === 'closed') {
-          videoChannelRef.current.subscribe();
-        }
-      }
-
-      try {
-        videoChannelRef.current.send({
-          type: 'broadcast',
-          event: 'signal',
-          payload: msg
-        });
-      } catch (error) {
-        console.error('❌ Error sending signal:', error);
-      }
-    },
-    on: (eventType, callback) => {
-      console.log('👂 Listening for event type:', eventType);
-      const handler = (e) => {
-        if (e.detail.type === eventType || eventType === 'signal') {
-          console.log('📥 Received event:', eventType, e.detail);
-          callback(e.detail);
-        }
-      };
-      window.addEventListener('video-signal', handler);
-      return handler; // Return handler for cleanup
-    },
-    off: (eventType, handler) => {
-      if (handler) {
-        window.removeEventListener('video-signal', handler);
-      }
-    }
-  };
-
-  // Hàm gọi video
-  const startVideoCall = () => {
+  // Hàm gọi video sử dụng CallManager
+  const startVideoCall = async () => {
     console.log('🎥 Starting video call...');
-    console.log('Current user:', currentUser?.id);
-    console.log('Current channel:', currentChannel?.id, currentChannel?.type);
+    console.log('Current user:', currentUser);
+    console.log('Current channel:', currentChannel);
 
     if (!currentUser || !currentChannel) {
-      console.error('❌ Missing user or channel');
+      alert('Vui lòng chọn kênh trước khi gọi video!');
       return;
     }
 
     if (currentChannel.type !== 'direct') {
-      alert('Chỉ hỗ trợ gọi video trong chat riêng!');
-      return;
-    }
-
-    // Kiểm tra video channel
-    if (!videoChannelRef.current) {
-      console.error('❌ Video channel not initialized');
-      alert('Kênh video chưa sẵn sàng, vui lòng thử lại sau!');
+      alert('Chỉ có thể gọi video trong kênh trực tiếp!');
       return;
     }
 
     const remoteUserId = currentChannel.chat_channel_members?.find(u => u.user_id !== currentUser.id)?.user_id;
-    console.log('Remote user ID:', remoteUserId);
-    console.log('Channel members:', currentChannel.chat_channel_members);
 
     if (!remoteUserId) {
       alert('Không tìm thấy người dùng để gọi!');
       return;
     }
 
-    console.log('📞 Sending call request to:', remoteUserId);
-    signalingChannel.send({
-      type: 'call-request',
-      from: currentUser.id,
-      to: remoteUserId
-    });
+    // Get target user info
+    const { data: targetUserData, error } = await supabase
+      .from('profiles')
+      .select('id, display_name, avatar_url')
+      .eq('id', remoteUserId)
+      .single();
 
-    setVideoCallPopup({ isCaller: true, remoteUserId, channelId: currentChannel.id });
+    if (error || !targetUserData) {
+      alert('Không tìm thấy thông tin người dùng!');
+      return;
+    }
+
+    const targetUser = {
+      id: targetUserData.id,
+      name: targetUserData.display_name || 'Unknown User',
+      avatar_url: targetUserData.avatar_url
+    };
+
+    console.log('📞 Starting video call to:', targetUser);
+    
+    // Sử dụng CallManager để bắt đầu cuộc gọi
+    startOutgoingCall(targetUser);
   };
 
-  // Hàm từ chối cuộc gọi
-  const rejectVideoCall = () => {
-    if (!currentUser || !currentChannel || !videoCallPopup) return;
-    signalingChannel.send({
-      type: 'call-cancel',
-      from: currentUser.id,
-      to: videoCallPopup.remoteUserId
-    });
-    setVideoCallPopup(null);
-  };
+
 
   if (loading) {
     return (
@@ -1957,10 +1867,12 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
             {currentChannel?.type === 'direct' && (
               <button
                 onClick={startVideoCall}
-                className="ml-2 p-2 rounded-full bg-green-500 text-white hover:bg-green-600 transition-colors"
+                className="ml-2 p-2 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors"
                 title="Gọi video"
               >
-                <svg width={24} height={24} fill="none" stroke="currentColor"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M4 6h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2z" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg width={24} height={24} fill="none" stroke="currentColor">
+                  <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M4 6h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2z" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
               </button>
             )}
           </div>
@@ -2345,40 +2257,6 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
             >×</button>
           </div>
         </div>
-      )}
-      {/* Hiển thị popup nhận cuộc gọi */}
-      {videoCallPopup && !videoCallPopup.isCaller && !videoCallPopup.accepted && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
-          <div className="bg-white rounded-lg p-6 flex flex-col items-center">
-            <div className="text-lg font-bold mb-2">Có cuộc gọi video đến!</div>
-            <div className="mb-4">Bạn có muốn nhận cuộc gọi không?</div>
-            <div className="flex space-x-4">
-              <button
-                onClick={() => {
-                  console.log('✅ Accepting video call');
-                  // Đánh dấu cuộc gọi đã được chấp nhận
-                  setVideoCallPopup({ ...videoCallPopup, accepted: true });
-                }}
-                className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-              >Nhận</button>
-              <button
-                onClick={rejectVideoCall}
-                className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
-              >Từ chối</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Hiển thị VideoCall khi đang gọi hoặc nhận */}
-      {videoCallPopup && (
-        <VideoCall
-          signalingChannel={signalingChannel}
-          onClose={() => setVideoCallPopup(null)}
-          isCaller={videoCallPopup.isCaller}
-          remoteUserId={videoCallPopup.remoteUserId}
-          localUserId={currentUser.id}
-        />
       )}
     </>
   );

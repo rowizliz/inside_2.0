@@ -6,10 +6,14 @@ const cors = require('cors');
 const app = express();
 const server = http.createServer(app);
 
-// Cấu hình CORS cho Socket.io
+// Cấu hình CORS cho Socket.io (hỗ trợ cả local và production)
 const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: [
+      "http://localhost:3000",
+      "https://inside-video-call.vercel.app",
+      "https://*.vercel.app"
+    ],
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -17,6 +21,24 @@ const io = socketIo(server, {
 
 app.use(cors());
 app.use(express.json());
+
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.json({
+    status: 'OK',
+    message: 'Inside Video Call Backend Server',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    activeUsers: users.size,
+    activeRooms: rooms.size
+  });
+});
 
 // Store active users and rooms
 const users = new Map();

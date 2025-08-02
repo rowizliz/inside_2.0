@@ -1,0 +1,10 @@
+// Vercel build config for CRA + react-app-rewired
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "build",
+  "installCommand": "npm ci",
+  "framework": "create-react-app",
+  "env": {
+    "CI": "false"
+  }
+}

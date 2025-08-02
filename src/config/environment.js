@@ -3,7 +3,7 @@
 const config = {
   development: {
     socketUrl: process.env.REACT_APP_SOCKET_URL_DEV || 'http://localhost:3001',
-    apiUrl: 'http://localhost:3000',
+    apiUrl: 'http://localhost:3001',
     environment: 'development'
   },
   production: {

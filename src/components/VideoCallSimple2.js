@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import io from 'socket.io-client';
 import Peer from 'simple-peer';
-import { SOCKET_URL } from '../config/environment';
 
 const VideoCallSimple2 = () => {
   const [roomId, setRoomId] = useState('test123');
@@ -145,7 +144,7 @@ const VideoCallSimple2 = () => {
       setStatus('Đang kết nối server...');
       
       // Connect to signaling server
-      const socket = io(SOCKET_URL, {
+      const socket = io('http://localhost:3000', {
         forceNew: true,
         transports: ['websocket']
       });

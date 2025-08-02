@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import io from 'socket.io-client';
-import { SOCKET_URL } from '../config/environment';
 
 const DebugVideoTest = () => {
   const [status, setStatus] = useState('Sẵn sàng');
@@ -20,7 +19,7 @@ const DebugVideoTest = () => {
     addLog('🚀 Testing connection...');
     setStatus('Đang kết nối...');
     
-    const socket = io(SOCKET_URL, {
+    const socket = io('http://localhost:3001', {
       forceNew: true
     });
     socketRef.current = socket;

@@ -91,7 +91,7 @@ const VideoCallSimple = ({ roomId, onClose }) => {
       setCallStatus('connecting');
 
       // Connect to signaling server
-      const socket = io(SOCKET_URL, {
+      const socket = io('http://localhost:3000', {
         transports: ['websocket', 'polling'],
         timeout: 20000,
         forceNew: true

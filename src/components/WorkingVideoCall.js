@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import io from 'socket.io-client';
 import Peer from 'simple-peer';
-import { SOCKET_URL } from '../config/environment';
 
 const WorkingVideoCall = () => {
   const [me, setMe] = useState("");
@@ -21,7 +20,7 @@ const WorkingVideoCall = () => {
 
   useEffect(() => {
     // Kết nối socket
-    socket.current = io(SOCKET_URL);
+    socket.current = io('http://localhost:3002');
     
     // Lấy camera/mic
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })

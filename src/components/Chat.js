@@ -1649,8 +1649,6 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   // Hàm gọi video sử dụng CallManager
   const startVideoCall = async () => {
     console.log('🎥 Starting video call...');
-    console.log('Current user:', currentUser);
-    console.log('Current channel:', currentChannel);
 
     if (!currentUser || !currentChannel) {
       alert('Vui lòng chọn kênh trước khi gọi video!');

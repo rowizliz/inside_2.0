@@ -103,8 +103,8 @@ export function AuthProvider({ children }) {
         // Use the newly created profile
         const userWithProfile = {
           ...user,
-          displayName: user?.user_metadata?.display_name || user?.email || 'Unknown User',
-          avatar_url: user?.user_metadata?.avatar_url || null,
+          displayName: user.user_metadata?.display_name || user.email,
+          avatar_url: user.user_metadata?.avatar_url || null,
           bio: ''
         };
         setCurrentUser(userWithProfile);
@@ -115,8 +115,8 @@ export function AuthProvider({ children }) {
         // Fallback to basic user data
         const userWithDisplayName = {
           ...user,
-          displayName: user?.user_metadata?.display_name || user?.email || 'Unknown User',
-          avatar_url: user?.user_metadata?.avatar_url || null,
+          displayName: user.user_metadata?.display_name || user.email,
+          avatar_url: user.user_metadata?.avatar_url || null,
           bio: ''
         };
         setCurrentUser(userWithDisplayName);
@@ -125,8 +125,8 @@ export function AuthProvider({ children }) {
       // Combine user data with profile data
       const userWithProfile = {
         ...user,
-        displayName: profileData?.display_name || user?.user_metadata?.display_name || user?.email || 'Unknown User',
-        avatar_url: profileData?.avatar_url || user?.user_metadata?.avatar_url || null,
+        displayName: profileData?.display_name || user.user_metadata?.display_name || user.email,
+        avatar_url: profileData?.avatar_url || user.user_metadata?.avatar_url || null,
         bio: profileData?.bio || ''
       };
       setCurrentUser(userWithProfile);
@@ -135,8 +135,8 @@ export function AuthProvider({ children }) {
       // Fallback to basic user data
       const userWithDisplayName = {
         ...user,
-        displayName: user?.user_metadata?.display_name || user?.email || 'Unknown User',
-        avatar_url: user?.user_metadata?.avatar_url || null,
+        displayName: user.user_metadata?.display_name || user.email,
+        avatar_url: user.user_metadata?.avatar_url || null,
         bio: ''
       };
       setCurrentUser(userWithDisplayName);
@@ -269,8 +269,8 @@ export function AuthProvider({ children }) {
         if (session?.user) {
           const basicUser = {
             ...session.user,
-            displayName: session?.user?.user_metadata?.display_name || session?.user?.email || 'Unknown User',
-            avatar_url: session?.user?.user_metadata?.avatar_url || null,
+            displayName: session.user.user_metadata?.display_name || session.user.email,
+            avatar_url: session.user.user_metadata?.avatar_url || null,
             bio: ''
           };
           setCurrentUser(basicUser);

@@ -9,13 +9,7 @@ const server = http.createServer(app);
 // Configure CORS for Socket.IO
 const io = socketIo(server, {
   cors: {
-    origin: [
-      "http://localhost:3000",
-      "https://inside-video-call-git-main-macbookpro2019s-projects.vercel.app",
-      "https://inside-video-call.vercel.app",
-      /\.vercel\.app$/,
-      /localhost:\d+$/
-    ],
+    origin: "http://localhost:3000",
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -23,13 +17,7 @@ const io = socketIo(server, {
 
 // Enable CORS for Express
 app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "https://inside-video-call-git-main-macbookpro2019s-projects.vercel.app",
-    "https://inside-video-call.vercel.app",
-    /\.vercel\.app$/,
-    /localhost:\d+$/
-  ],
+  origin: "http://localhost:3000",
   credentials: true
 }));
 

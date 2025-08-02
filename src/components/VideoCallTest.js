@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import io from 'socket.io-client';
 import Peer from 'simple-peer';
-import { SOCKET_URL } from '../config/environment';
 
 const VideoCallTest = () => {
   const [roomId, setRoomId] = useState('test123');
@@ -69,7 +68,7 @@ const VideoCallTest = () => {
       console.log('🔌 Connecting to signaling server...');
 
       // Connect to signaling server
-      const socket = io(SOCKET_URL, {
+      const socket = io('http://localhost:3001', {
         transports: ['websocket', 'polling'],
         timeout: 5000
       });

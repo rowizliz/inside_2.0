@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import io from 'socket.io-client';
-import { SOCKET_URL } from '../config/environment';
 
 const VideoCallNative = () => {
   const [roomId, setRoomId] = useState('test123');
@@ -80,7 +79,7 @@ const VideoCallNative = () => {
       setStatus('Đang kết nối server...');
       
       // Connect to signaling server
-      const socket = io(SOCKET_URL);
+      const socket = io('http://localhost:3000');
       socketRef.current = socket;
       
       socket.on('connect', () => {

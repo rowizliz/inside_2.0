@@ -120,11 +120,17 @@ io.on('connection', (socket) => {
     const { roomId, signal, userId } = data;
     console.log(`📡 Relaying signal from ${userId} in room ${roomId}`);
 
-    // Gửi signal tới tất cả users khác trong room
-    socket.to(roomId).emit('signal', {
-      signal,
-      userId
-    });
+    // Nếu đã join room thì phát trong room, đảm bảo định tuyến ổn định
+    if (roomId) {
+      socket.to(roomId).emit('signal', {
+        signal,
+        userId
+      });
+    } else {
+      // Fallback: phát cho tất cả (không khuyến nghị)
+      console.warn('⚠️ Received signal without roomId, broadcasting is not recommended');
+      socket.broadcast.emit('signal', { signal, userId });
+    }
   });
 
   // Xử lý leave room
@@ -228,6 +234,10 @@ io.on('connection', (socket) => {
     if (callInfo) {
       // Thông báo cho tất cả người trong cuộc gọi
       io.to(roomId).emit('call-ended', { roomId });
+
+      // Cho tất cả client rời room (an toàn)
+      const roomUsers = getRoomUsers(roomId);
+      roomUsers.forEach(uid => removeUserFromRoom(roomId, uid));
       
       // Xóa thông tin cuộc gọi
       activeCalls.delete(roomId);
@@ -297,7 +307,7 @@ app.get('/stats', (req, res) => {
   });
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🚀 Signaling server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);

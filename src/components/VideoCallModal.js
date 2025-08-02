@@ -33,7 +33,6 @@ const VideoCallModal = () => {
   const [callDuration, setCallDuration] = useState('00:00');
   const [isSpeakerOn, setIsSpeakerOn] = useState(false);
   const [isFlipCamera, setIsFlipCamera] = useState(false);
-  const [connectionQuality] = useState('good'); // 'good', 'fair', 'poor'
   
   // Timer để ẩn controls
   useEffect(() => {
@@ -81,17 +80,17 @@ const VideoCallModal = () => {
   
   // Tính thời gian cuộc gọi
   useEffect(() => {
-    if (activeCall?.status === 'connected' && activeCall?.startTime) {
+    if (activeCall?.status === 'connected' && activeCall.startTime) {
       const interval = setInterval(() => {
         const duration = Math.floor((new Date() - new Date(activeCall.startTime)) / 1000);
         const minutes = Math.floor(duration / 60);
         const seconds = duration % 60;
         setCallDuration(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
       }, 1000);
-
+      
       return () => clearInterval(interval);
     }
-  }, [activeCall?.status, activeCall?.startTime]);
+  }, [activeCall]);
   
   // Xử lý fullscreen
   const toggleFullscreen = async () => {
@@ -108,32 +107,33 @@ const VideoCallModal = () => {
   const flipCamera = async () => {
     if (localStream) {
       const videoTrack = localStream.getVideoTracks()[0];
-
+      if (!videoTrack) {
+        console.error('No video track found');
+        return;
+      }
+      
       try {
-        // Get current facing mode and flip it
-        const currentFacingMode = videoTrack.getSettings().facingMode || 'user';
+        // Get current facing mode
+        const settings = videoTrack.getSettings();
+        const currentFacingMode = settings.facingMode || 'user';
         const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-
+        
         const newStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: newFacingMode },
           audio: true
         });
-
+        
         // Replace video track in local stream
         const newVideoTrack = newStream.getVideoTracks()[0];
-
+        
         // Update local stream
         localStream.removeTrack(videoTrack);
         localStream.addTrack(newVideoTrack);
-
-        // Stop old track
         videoTrack.stop();
-
+        
         setIsFlipCamera(!isFlipCamera);
       } catch (error) {
         console.error('Error flipping camera:', error);
-        // Fallback: just toggle the state without actually flipping
-        setIsFlipCamera(!isFlipCamera);
       }
     }
   };
@@ -161,18 +161,18 @@ const VideoCallModal = () => {
           <div className="w-full h-full bg-gray-900 flex items-center justify-center">
             <div className="text-center">
               <div className="w-32 h-32 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-4xl font-semibold">
-                {activeCall?.targetUser?.avatar_url ? (
-                  <img
-                    src={activeCall.targetUser.avatar_url}
-                    alt={activeCall.targetUser?.name || 'User'}
+                {activeCall.targetUser?.avatar_url ? (
+                  <img 
+                    src={activeCall.targetUser.avatar_url} 
+                    alt={activeCall.targetUser.name}
                     className="w-full h-full rounded-full object-cover"
                   />
                 ) : (
-                  activeCall?.targetUser?.name?.charAt(0)?.toUpperCase() || '?'
+                  activeCall.targetUser?.name?.charAt(0).toUpperCase() || '?'
                 )}
               </div>
               <h3 className="text-white text-2xl font-medium mb-2">
-                {activeCall?.targetUser?.name || 'Unknown'}
+                {activeCall.targetUser?.name || 'Unknown'}
               </h3>
               <p className="text-gray-400">
                 {isConnecting ? 'Đang kết nối...' : 'Đang chờ video...'}
@@ -215,7 +215,7 @@ const VideoCallModal = () => {
           <div className="flex items-center gap-3">
             <div className="flex flex-col">
               <h4 className="text-white font-medium">
-                {activeCall?.targetUser?.name || 'Unknown'}
+                {activeCall.targetUser?.name || 'Unknown'}
               </h4>
               <div className="flex items-center gap-2 text-sm">
                 {isConnected && (
@@ -224,14 +224,11 @@ const VideoCallModal = () => {
                     <span className="text-gray-400">•</span>
                   </>
                 )}
-                <span className={`flex items-center gap-1 ${
-                  connectionQuality === 'good' ? 'text-green-400' : 
-                  connectionQuality === 'fair' ? 'text-yellow-400' : 'text-red-400'
-                }`}>
+                <span className="text-green-400">
                   <div className="flex gap-0.5">
-                    <div className={`w-1 h-2 bg-current rounded-full ${connectionQuality === 'poor' ? 'opacity-30' : ''}`} />
-                    <div className={`w-1 h-3 bg-current rounded-full ${connectionQuality === 'poor' ? 'opacity-30' : ''}`} />
-                    <div className={`w-1 h-4 bg-current rounded-full ${connectionQuality !== 'good' ? 'opacity-30' : ''}`} />
+                    <div className="w-1 h-2 bg-current rounded-full" />
+                    <div className="w-1 h-3 bg-current rounded-full" />
+                    <div className="w-1 h-4 bg-current rounded-full" />
                   </div>
                 </span>
               </div>

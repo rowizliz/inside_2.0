@@ -9,10 +9,14 @@
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^12.1.5",
     "@testing-library/user-event": "^13.5.0",
+    "buffer": "^6.0.3",
     "cors": "^2.8.5",
+    "crypto-browserify": "^3.12.1",
     "express": "^5.1.0",
     "firebase": "^12.0.0",
+    "process": "^0.11.10",
     "react": "^17.0.2",
+    "react-app-rewired": "^2.2.1",
     "react-dom": "^17.0.2",
     "react-easy-crop": "^5.0.8",
     "react-router-dom": "^6.28.0",
@@ -20,14 +24,16 @@
     "simple-peer": "^9.11.1",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
+    "stream-browserify": "^3.0.0",
     "tailwindcss": "^3.4.17",
+    "util": "^0.12.5",
     "web-vitals": "^2.1.4",
     "webrtc-adapter": "^9.0.1"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
+    "start": "react-app-rewired start",
+    "build": "react-app-rewired build",
+    "test": "react-app-rewired test",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -47,8 +53,5 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "engines": {
-    "node": "18.x"
   }
 }

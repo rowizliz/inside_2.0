@@ -51,7 +51,8 @@ export default function Login() {
         return;
       }
       const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-        redirectTo: window.location.origin + '/reset-password'
+        // Redirect về trang đặt lại mật khẩu trên production
+        redirectTo: 'https://inside-app.vercel.app/reset-password'
       });
       if (error) {
         setForgotMsg('Gửi email thất bại: ' + error.message);

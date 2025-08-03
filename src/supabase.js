@@ -7,7 +7,8 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    // Bật xử lý token từ URL để hỗ trợ recovery/reset password
+    detectSessionInUrl: true,
     storage: window.localStorage,
     storageKey: 'inside-app-auth'
   },
@@ -18,4 +19,4 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 })
 
-export default supabase 
+export default supabase

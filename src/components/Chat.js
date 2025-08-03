@@ -580,9 +580,16 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   const fetchMessages = async (channelId, limit = 30, offset = 0, append = false) => {
     if (!channelId) return;
     try {
+      // Join động profiles để luôn lấy tên + avatar mới nhất cho tác giả tin nhắn
       const { data, error, count } = await supabase
         .from('messages')
-        .select('id, channel_id, content, author_uid, author_display_name, author_avatar_url, created_at, media_url, media_type', { count: 'exact' })
+        .select(`
+          id, channel_id, content, author_uid, author_display_name, author_avatar_url, created_at, media_url, media_type,
+          profiles:author_uid (
+            display_name,
+            avatar_url
+          )
+        `, { count: 'exact' })
         .eq('channel_id', channelId)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
@@ -590,8 +597,14 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
         console.error('Error fetching messages:', error);
         return;
       }
-      // Đảo ngược để hiển thị từ cũ đến mới
-      const newMessages = (data || []).reverse();
+      // Chuẩn hóa dữ liệu theo profiles trước khi render và đảo ngược để hiển thị từ cũ đến mới
+      const newMessages = (data || [])
+        .map(m => ({
+          ...m,
+          author_display_name: m.profiles?.display_name || m.author_display_name,
+          author_avatar_url: m.profiles?.avatar_url || m.author_avatar_url
+        }))
+        .reverse();
       if (append) {
         setMessages(prev => [...newMessages, ...prev]);
       } else {
@@ -1478,23 +1491,35 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
   // Fetch tin nhắn mới nhất cho tất cả kênh
   const fetchLatestMessages = async () => {
     try {
+      // Lấy tin nhắn mới nhất mỗi kênh và join profiles để show tên + avatar mới ở list
       const { data, error } = await supabase
         .from('messages')
-        .select('*')
+        .select(`
+          *,
+          profiles:author_uid (
+            display_name,
+            avatar_url
+          )
+        `)
         .order('created_at', { ascending: false })
-        .limit(1);
+        .limit(1000); // lấy đủ để nhóm theo channel
 
       if (error) {
         console.error('Error fetching latest messages:', error);
         return;
       }
 
-      // Nhóm tin nhắn theo channel_id
+      // Nhóm tin nhắn theo channel_id và đồng bộ tên/avatar
       const latestByChannel = {};
       data.forEach(msg => {
-        if (!latestByChannel[msg.channel_id] || 
-            new Date(msg.created_at) > new Date(latestByChannel[msg.channel_id].created_at)) {
-          latestByChannel[msg.channel_id] = msg;
+        const normalized = {
+          ...msg,
+          author_display_name: msg.profiles?.display_name || msg.author_display_name,
+          author_avatar_url: msg.profiles?.avatar_url || msg.author_avatar_url
+        };
+        if (!latestByChannel[normalized.channel_id] ||
+            new Date(normalized.created_at) > new Date(latestByChannel[normalized.channel_id].created_at)) {
+          latestByChannel[normalized.channel_id] = normalized;
         }
       });
 
@@ -1788,11 +1813,11 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                       ) : (
                         (info?.display_name || channel.name || 'U').charAt(0)
                       )}
-                  </div>
+                    </div>
                     <div className="flex-1 min-w-0 flex flex-col items-start justify-center">
                       <div className="text-white font-medium truncate text-left w-full">
                         {info?.display_name || channel.name || 'Unknown'}
-                  </div>
+                      </div>
                       <div className="text-xs text-gray-400 truncate text-left w-full flex items-center">
                         {latestMsg ? latestMsg.content : 'Chưa có tin nhắn'}
                         {unreadCounts[channel.id] > 0 && (
@@ -1800,8 +1825,8 @@ export default function Chat({ unreadCounts, setUnreadCounts, fetchUnreadCounts 
                             {unreadCounts[channel.id]}
                           </span>
                         )}
-                </div>
-              </div>
+                      </div>
+                    </div>
                   </div>
                 );
               })}

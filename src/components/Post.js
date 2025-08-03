@@ -119,19 +119,22 @@ export default function Post({ post, onPostDeleted, onUserClick }) {
   }, [post.id]);
 
   useEffect(() => {
-    async function fetchAuthorAvatar() {
-      if (!authorAvatar && post.author_uid) {
+    async function fetchAuthorProfile() {
+      if (post.author_uid) {
         const { data, error } = await supabase
           .from('profiles')
-          .select('avatar_url')
+          .select('display_name, avatar_url')
           .eq('id', post.author_uid)
           .single();
-        if (data) {
+        if (!error && data) {
+          // Cập nhật avatar + tên hiển thị theo profiles mới nhất
           setAuthorAvatar(data.avatar_url || post.author_user_metadata?.avatar_url || null);
+          // Gắn trực tiếp vào post object hiển thị (không mutate props)
+          post.author_display_name = data.display_name || post.author_display_name;
         }
       }
     }
-    fetchAuthorAvatar();
+    fetchAuthorProfile();
     // eslint-disable-next-line
   }, [post.author_uid]);
 

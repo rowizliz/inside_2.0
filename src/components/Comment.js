@@ -17,23 +17,34 @@ export default function Comment({ postId, comments, onCommentAdded }) {
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
 
   useEffect(() => {
-    async function fetchAvatars() {
-      const missing = comments.filter(c => !c.author_avatar_url && c.author_uid && !avatars[c.author_uid]);
-      if (missing.length === 0) return;
-      const uids = [...new Set(missing.map(c => c.author_uid))];
+    async function fetchProfiles() {
+      if (!comments || comments.length === 0) return;
+      const uids = [...new Set(comments.filter(c => !!c.author_uid).map(c => c.author_uid))];
+      if (uids.length === 0) return;
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, avatar_url')
+        .select('id, display_name, avatar_url')
         .in('id', uids);
-      if (data) {
+      if (!error && data) {
         const newAvatars = {};
+        const nameMap = {};
         data.forEach(profile => {
-          newAvatars[profile.id] = profile.avatar_url;
+          newAvatars[profile.id] = profile.avatar_url || null;
+          nameMap[profile.id] = profile.display_name || null;
         });
         setAvatars(prev => ({ ...prev, ...newAvatars }));
+        // Cập nhật display_name động cho mảng comments đầu vào thông qua callback
+        if (onCommentAdded) {
+          const updated = comments.map(c => ({
+            ...c,
+            author_avatar_url: c.author_avatar_url || newAvatars[c.author_uid] || c.author_avatar_url,
+            author_display_name: nameMap[c.author_uid] || c.author_display_name
+          }));
+          onCommentAdded(updated);
+        }
       }
     }
-    fetchAvatars();
+    fetchProfiles();
     // eslint-disable-next-line
   }, [comments]);
 
@@ -472,14 +483,14 @@ export default function Comment({ postId, comments, onCommentAdded }) {
             return (
               <div key={comment.id} className="flex space-x-2">
                 <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-semibold">
-                  {comment.author_avatar_url || avatars[comment.author_uid] ? (
-                    <img 
-                      src={comment.author_avatar_url || avatars[comment.author_uid]} 
-                      alt="Avatar" 
-                      className="w-full h-full rounded-full object-cover" 
+                  {avatars[comment.author_uid] || comment.author_avatar_url ? (
+                    <img
+                      src={avatars[comment.author_uid] || comment.author_avatar_url}
+                      alt="Avatar"
+                      className="w-full h-full rounded-full object-cover"
                     />
                   ) : (
-                    comment.author_display_name?.charAt(0) || 'U'
+                    (comment.author_display_name || '').charAt(0) || 'U'
                   )}
                 </div>
                 <div className="flex-1">

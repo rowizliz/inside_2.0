@@ -103,6 +103,45 @@ export default function Home() {
   // Gọi khi đăng nhập thành công hoặc chuyển tab
   useEffect(() => { fetchUnreadCounts(); }, [currentUser]);
 
+  // Đồng bộ avatar/tên mới nhất từ profiles vào localStorage session khi vào Home (không cần gọi hàm context)
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshCurrentUserProfile() {
+      try {
+        if (!currentUser?.id) return;
+        console.log('Home.js: refreshCurrentUserProfile for', currentUser.id);
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('display_name, avatar_url, bio')
+          .eq('id', currentUser.id)
+          .single();
+        if (!cancelled && !error && data) {
+          const stored = localStorage.getItem('inside-app-auth');
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              parsed.user = {
+                ...(parsed.user || {}),
+                user_metadata: {
+                  ...(parsed.user?.user_metadata || {}),
+                  display_name: data.display_name || currentUser.displayName,
+                  avatar_url: data.avatar_url || currentUser.avatar_url
+                }
+              };
+              localStorage.setItem('inside-app-auth', JSON.stringify(parsed));
+            } catch (err) {
+              console.warn('Home.js: could not merge session with latest profile', err);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Home.js: refreshCurrentUserProfile failed', e);
+      }
+    }
+    refreshCurrentUserProfile();
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
+  
   // Test subscription để xác nhận realtime hoạt động
   useEffect(() => {
     if (!currentUser) return;
@@ -115,7 +154,7 @@ export default function Home() {
       .subscribe((status) => {
         console.log('🧪 Home.js: Test subscription status:', status);
       });
-      
+        
     return () => {
       console.log('🧪 Home.js: Cleaning up test subscription');
       supabase.removeChannel(testChannel);
@@ -148,6 +187,7 @@ export default function Home() {
   useEffect(() => {
     const fetchPosts = async () => {
       try {
+        // Phase 1: lấy posts như cũ để đảm bảo newsfeed không rỗng
         const { data, error } = await supabase
           .from('posts')
           .select('*')
@@ -158,36 +198,54 @@ export default function Home() {
           return;
         }
 
-        setPosts(data || []);
+        const list = data || [];
+        setPosts(list);
+
+        // Phase 2: map author từ bảng profiles theo author_uid để đồng bộ avatar/tên
+        const uids = [...new Set(list.filter(p => !!p.author_uid).map(p => p.author_uid))];
+        if (uids.length > 0) {
+          const { data: profileRows, error: profileErr } = await supabase
+            .from('profiles')
+            .select('id, display_name, avatar_url')
+            .in('id', uids);
+
+          if (!profileErr && profileRows) {
+            const mapById = {};
+            profileRows.forEach(pr => { mapById[pr.id] = pr; });
+
+            setPosts(prev =>
+              prev.map(p => {
+                const pr = mapById[p.author_uid];
+                if (!pr) return p;
+                return {
+                  ...p,
+                  author_display_name: pr.display_name || p.author_display_name,
+                  author_user_metadata: {
+                    ...(p.author_user_metadata || {}),
+                    avatar_url: pr.avatar_url || p.author_user_metadata?.avatar_url
+                  }
+                };
+              })
+            );
+          }
+        }
       } catch (error) {
         console.error('Error:', error);
       } finally {
-      setLoading(false);
+        setLoading(false);
       }
     };
 
     fetchPosts();
 
-    // Set up real-time subscription
+    // Real-time: refetch toàn bộ để áp dụng phase-2 mapping
     const subscription = supabase
-      .channel('posts')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'posts' }, 
-        (payload) => {
+      .channel('posts-with-profile-2phase')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'posts' },
+        async (payload) => {
           console.log('Real-time event:', payload.eventType, payload);
-          
-          if (payload.eventType === 'INSERT') {
-            console.log('New post inserted:', payload.new);
-            setPosts(prev => [payload.new, ...prev]);
-          } else if (payload.eventType === 'DELETE') {
-            console.log('Post deleted:', payload.old);
-            setPosts(prev => prev.filter(post => post.id !== payload.old.id));
-          } else if (payload.eventType === 'UPDATE') {
-            console.log('Post updated:', payload.new);
-            setPosts(prev => prev.map(post => 
-              post.id === payload.new.id ? payload.new : post
-            ));
-          }
+          await fetchPosts();
         }
       )
       .subscribe((status) => {

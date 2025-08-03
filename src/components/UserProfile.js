@@ -191,10 +191,7 @@ export default function UserProfile({ userId, onBack }) {
         return;
       }
 
-      // Gọi lại fetchUserData để lấy avatar_url mới nhất từ database
-      await fetchUserData();
-
-      // Đồng bộ context user toàn app
+      // Đồng bộ context user toàn app NGAY LẬP TỨC để header/topbar & CreatePost cập nhật avatar
       if (updateCurrentUserProfile) {
         updateCurrentUserProfile({
           display_name: user.displayName,
@@ -202,6 +199,9 @@ export default function UserProfile({ userId, onBack }) {
           bio: bio
         });
       }
+
+      // Gọi lại fetchUserData để lấy avatar_url mới nhất từ database (đảm bảo dữ liệu nhất quán)
+      await fetchUserData();
 
       setIsEditing(false);
       setAvatar(null);
